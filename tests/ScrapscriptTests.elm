@@ -1,115 +1,16 @@
-module Tests exposing (suite)
+module ScrapscriptTests exposing (suite)
 
 import Dict exposing (Dict)
 import Expect exposing (..)
+import Scrapscript exposing (..)
 import Test exposing (..)
-
-
-type Token
-    = IntLit Int
-    | Operator String
-    | VariantToken String
-    | Name String
-    | LeftBrace ()
-    | RightBrace ()
-    | LeftBracket ()
-    | RightBracket ()
-    | LeftParen ()
-    | RightParen ()
-    | StringLit String
-    | BytesLit ( String, Int )
-    | FloatLit Float
-
-
-lex : String -> Result String (List Token)
-lex exp =
-    Err "TODO: lex"
-
-
-type Scrap
-    = Int Int
-    | Float Float
-    | String String
-    | Bytes String
-    | Var String
-    | Binop BinopKind ( Scrap, Scrap )
-    | List (List Scrap)
-    | Record (List ( String, Scrap ))
-    | Spread (Maybe String)
-    | Function ( Scrap, Scrap )
-    | Apply ( Scrap, Scrap )
-    | Where ( Scrap, Scrap )
-    | Assert ( Scrap, Scrap )
-    | Assign ( Scrap, Scrap )
-    | MatchFunction (List MatchCase)
-    | Variant ( String, Scrap )
-    | Access ( Scrap, Scrap )
-    | Hole
-    | Closure ( Env, Scrap )
-    | EnvObject Env
-
-
-type BinopKind
-    = ADD
-    | SUB
-    | MUL
-    | DIV
-    | FLOOR_DIV
-    | EXP
-    | MOD
-    | EQUAL
-    | NOT_EQUAL
-    | LESS
-    | GREATER
-    | LESS_EQUAL
-    | GREATER_EQUAL
-    | BOOL_AND
-    | BOOL_OR
-    | STRING_CONCAT
-    | LIST_CONS
-    | LIST_APPEND
-    | HASTYPE
-    | RIGHT_EVAL
-
-
-type MatchCase
-    = MatchCase ( Scrap, Scrap )
-
-
-true : Scrap
-true =
-    Variant ( "true", List [] )
-
-
-false : Scrap
-false =
-    Variant ( "false", List [] )
-
-
-parse : List Token -> Result String Scrap
-parse tokens =
-    Err "TODO: parse"
-
-
-match : ( Scrap, Scrap ) -> Result String (List ( String, Scrap ))
-match ( exp, pattern ) =
-    Err "TODO: match"
-
-
-type alias Env =
-    Dict String Scrap
-
-
-eval : ( Env, Scrap ) -> Result String Scrap
-eval ( env, exp ) =
-    Err "TODO: eval"
 
 
 expectError : String -> Result String a -> Expectation
 expectError msg x =
     case x of
-        Ok _ ->
-            Expect.fail "Expected Err but received Ok."
+        Ok x_ ->
+            Expect.fail ("Expected Err but received Ok: " ++ Debug.toString x_)
 
         Err err ->
             if String.contains msg err then
@@ -127,32 +28,6 @@ expectEqual ( x, y ) =
 expectTodo : Expectation
 expectTodo =
     Expect.fail "TODO"
-
-
-
-{-
-   , describe "EndToEndTestsBase"
-     , test "_run" <| \ _ ->
-           tokens = (lex text)
-           ast = parse (tokens)
-           if env is None:
-               env = boot_env ()
-           return eval (env, ast)
--}
-
-
-run : String -> Result String Scrap
-run exp =
-    Err "TODO: run"
-
-
-
--- TODO
-
-
-stdlib : String -> String
-stdlib exp =
-    exp
 
 
 suite : Test
@@ -182,10 +57,10 @@ suite =
             , test "test_lex_string" <| \_ -> Expect.equal (lex "\"hello\"") (Ok [ StringLit "hello" ])
             , test "test_lex_string_with_spaces" <| \_ -> Expect.equal (lex "\"hello world\"") (Ok [ StringLit "hello world" ])
             , test "test_lex_string_missing_end_quote_raises_parse_error" <| \_ -> expectError "while reading string" <| lex "\"hello\""
-            , test "test_lex_empty_list" <| \_ -> Expect.equal (lex "[ ]") (Ok [ LeftBracket (), RightBracket () ])
-            , test "test_lex_empty_list_with_spaces" <| \_ -> Expect.equal (lex "[ ]") (Ok [ LeftBracket (), RightBracket () ])
-            , test "test_lex_list_with_items" <| \_ -> Expect.equal (lex "[ 1 , 2 ]") (Ok [ LeftBracket (), IntLit 1, Operator ",", IntLit 2, RightBracket () ])
-            , test "test_lex_list_with_no_spaces" <| \_ -> Expect.equal (lex "[1,2]") (Ok [ LeftBracket (), IntLit 1, Operator ",", IntLit 2, RightBracket () ])
+            , test "test_lex_empty_list" <| \_ -> Expect.equal (lex "[ ]") (Ok [ LeftBracket, RightBracket ])
+            , test "test_lex_empty_list_with_spaces" <| \_ -> Expect.equal (lex "[ ]") (Ok [ LeftBracket, RightBracket ])
+            , test "test_lex_list_with_items" <| \_ -> Expect.equal (lex "[ 1 , 2 ]") (Ok [ LeftBracket, IntLit 1, Operator ",", IntLit 2, RightBracket ])
+            , test "test_lex_list_with_no_spaces" <| \_ -> Expect.equal (lex "[1,2]") (Ok [ LeftBracket, IntLit 1, Operator ",", IntLit 2, RightBracket ])
             , test "test_lex_function" <| \_ -> Expect.equal (lex "a -> b -> a + b") (Ok [ Name "a", Operator "->", Name "b", Operator "->", Name "a", Operator "+", Name "b" ])
             , test "test_lex_function_with_no_spaces" <| \_ -> Expect.equal (lex "a->b->a+b") (Ok [ Name "a", Operator "->", Name "b", Operator "->", Name "a", Operator "+", Name "b" ])
             , test "test_lex_where" <| \_ -> Expect.equal (lex "a . b") (Ok [ Name "a", Operator ".", Name "b" ])
@@ -200,27 +75,27 @@ suite =
             , test "test_lex_bytes_base64" <| \_ -> Expect.equal (lex "~~64'QUJD") (Ok [ BytesLit ( "QUJD", 64 ) ])
             , test "test_lex_bytes_base32" <| \_ -> Expect.equal (lex "~~32'IFBEG===") (Ok [ BytesLit ( "IFBEG===", 32 ) ])
             , test "test_lex_bytes_base16" <| \_ -> Expect.equal (lex "~~16'414243") (Ok [ BytesLit ( "414243", 16 ) ])
-            , test "test_lex_hole" <| \_ -> Expect.equal (lex "()") (Ok [ LeftParen (), RightParen () ])
-            , test "test_lex_hole_with_spaces" <| \_ -> Expect.equal (lex "( )") (Ok [ LeftParen (), RightParen () ])
-            , test "test_lex_parenthetical_expression" <| \_ -> Expect.equal (lex "(1+2)") (Ok [ LeftParen (), IntLit 1, Operator "+", IntLit 2, RightParen () ])
+            , test "test_lex_hole" <| \_ -> Expect.equal (lex "()") (Ok [ LeftParen, RightParen ])
+            , test "test_lex_hole_with_spaces" <| \_ -> Expect.equal (lex "( )") (Ok [ LeftParen, RightParen ])
+            , test "test_lex_parenthetical_expression" <| \_ -> Expect.equal (lex "(1+2)") (Ok [ LeftParen, IntLit 1, Operator "+", IntLit 2, RightParen ])
             , test "test_lex_pipe" <| \_ -> Expect.equal (lex "1 |> f . f = a -> a + 1") (Ok [ IntLit 1, Operator "|>", Name "f", Operator ".", Name "f", Operator "=", Name "a", Operator "->", Name "a", Operator "+", IntLit 1 ])
             , test "test_lex_reverse_pipe" <| \_ -> Expect.equal (lex "f <| 1 . f = a -> a + 1") (Ok [ Name "f", Operator "<|", IntLit 1, Operator ".", Name "f", Operator "=", Name "a", Operator "->", Name "a", Operator "+", IntLit 1 ])
-            , test "test_lex_record_no_fields" <| \_ -> Expect.equal (lex "{ }") (Ok [ LeftBrace (), RightBrace () ])
-            , test "test_lex_record_no_fields_no_spaces" <| \_ -> Expect.equal (lex "{}") (Ok [ LeftBrace (), RightBrace () ])
-            , test "test_lex_record_one_field" <| \_ -> Expect.equal (lex "{ a = 4 }") (Ok [ LeftBrace (), Name "a", Operator "=", IntLit 4, RightBrace () ])
-            , test "test_lex_record_multiple_fields" <| \_ -> Expect.equal (lex "{ a = 4, b = \"z\" }") (Ok [ LeftBrace (), Name "a", Operator "=", IntLit 4, Operator ",", Name "b", Operator "=", StringLit "z", RightBrace () ])
+            , test "test_lex_record_no_fields" <| \_ -> Expect.equal (lex "{ }") (Ok [ LeftBrace, RightBrace ])
+            , test "test_lex_record_no_fields_no_spaces" <| \_ -> Expect.equal (lex "{}") (Ok [ LeftBrace, RightBrace ])
+            , test "test_lex_record_one_field" <| \_ -> Expect.equal (lex "{ a = 4 }") (Ok [ LeftBrace, Name "a", Operator "=", IntLit 4, RightBrace ])
+            , test "test_lex_record_multiple_fields" <| \_ -> Expect.equal (lex "{ a = 4, b = \"z\" }") (Ok [ LeftBrace, Name "a", Operator "=", IntLit 4, Operator ",", Name "b", Operator "=", StringLit "z", RightBrace ])
             , test "test_lex_record_access" <| \_ -> Expect.equal (lex "r@a") (Ok [ Name "r", Operator "@", Name "a" ])
             , test "test_lex_right_eval" <| \_ -> Expect.equal (lex "a!b") (Ok [ Name "a", Operator "!", Name "b" ])
             , test "test_lex_match" <| \_ -> Expect.equal (lex "g = | 1 -> 2 | 2 -> 3") (Ok [ Name "g", Operator "=", Operator "|", IntLit 1, Operator "->", IntLit 2, Operator "|", IntLit 2, Operator "->", IntLit 3 ])
             , test "test_lex_compose" <| \_ -> Expect.equal (lex "f >> g") (Ok [ Name "f", Operator ">>", Name "g" ])
             , test "test_lex_compose_reverse" <| \_ -> Expect.equal (lex "f << g") (Ok [ Name "f", Operator "<<", Name "g" ])
-            , test "test_lex_list_with_only_spread" <| \_ -> Expect.equal (lex "[ ... ]") (Ok [ LeftBracket (), Operator "...", RightBracket () ])
-            , test "test_lex_list_with_spread" <| \_ -> Expect.equal (lex "[ 1 , ... ]") (Ok [ LeftBracket (), IntLit 1, Operator ",", Operator "...", RightBracket () ])
-            , test "test_lex_list_with_spread_no_spaces" <| \_ -> Expect.equal (lex "[ 1,... ]") (Ok [ LeftBracket (), IntLit 1, Operator ",", Operator "...", RightBracket () ])
-            , test "test_lex_list_with_named_spread" <| \_ -> Expect.equal (lex "[1,...rest]") (Ok [ LeftBracket (), IntLit 1, Operator ",", Operator "...", Name "rest", RightBracket () ])
-            , test "test_lex_record_with_only_spread" <| \_ -> Expect.equal (lex "{ ... }") (Ok [ LeftBrace (), Operator "...", RightBrace () ])
-            , test "test_lex_record_with_spread" <| \_ -> Expect.equal (lex "{ x = 1, ...}") (Ok [ LeftBrace (), Name "x", Operator "=", IntLit 1, Operator ",", Operator "...", RightBrace () ])
-            , test "test_lex_record_with_spread_no_spaces" <| \_ -> Expect.equal (lex "{x=1,...}") (Ok [ LeftBrace (), Name "x", Operator "=", IntLit 1, Operator ",", Operator "...", RightBrace () ])
+            , test "test_lex_list_with_only_spread" <| \_ -> Expect.equal (lex "[ ... ]") (Ok [ LeftBracket, Operator "...", RightBracket ])
+            , test "test_lex_list_with_spread" <| \_ -> Expect.equal (lex "[ 1 , ... ]") (Ok [ LeftBracket, IntLit 1, Operator ",", Operator "...", RightBracket ])
+            , test "test_lex_list_with_spread_no_spaces" <| \_ -> Expect.equal (lex "[ 1,... ]") (Ok [ LeftBracket, IntLit 1, Operator ",", Operator "...", RightBracket ])
+            , test "test_lex_list_with_named_spread" <| \_ -> Expect.equal (lex "[1,...rest]") (Ok [ LeftBracket, IntLit 1, Operator ",", Operator "...", Name "rest", RightBracket ])
+            , test "test_lex_record_with_only_spread" <| \_ -> Expect.equal (lex "{ ... }") (Ok [ LeftBrace, Operator "...", RightBrace ])
+            , test "test_lex_record_with_spread" <| \_ -> Expect.equal (lex "{ x = 1, ...}") (Ok [ LeftBrace, Name "x", Operator "=", IntLit 1, Operator ",", Operator "...", RightBrace ])
+            , test "test_lex_record_with_spread_no_spaces" <| \_ -> Expect.equal (lex "{x=1,...}") (Ok [ LeftBrace, Name "x", Operator "=", IntLit 1, Operator ",", Operator "...", RightBrace ])
             , test "test_lex_variant_with_space" <| \_ -> Expect.equal (lex "# abc") (Ok [ VariantToken "abc" ])
             , test "test_lex_variant_with_no_space" <| \_ -> Expect.equal (lex "#abc") (Ok [ VariantToken "abc" ])
             , test "test_lex_variant_non_name_raises_parse_error" <| \_ -> expectError "expected name" <| lex "#1"
@@ -234,8 +109,8 @@ suite =
                         , \_ -> Expect.equal (lex "+ ") (Ok [ Operator "+" ])
                         , \_ -> Expect.equal (lex "123 ") (Ok [ IntLit 123 ])
                         , \_ -> Expect.equal (lex "abc ") (Ok [ Name "abc" ])
-                        , \_ -> Expect.equal (lex "[ ") (Ok [ LeftBracket () ])
-                        , \_ -> Expect.equal (lex "] ") (Ok [ RightBracket () ])
+                        , \_ -> Expect.equal (lex "[ ") (Ok [ LeftBracket ])
+                        , \_ -> Expect.equal (lex "] ") (Ok [ RightBracket ])
                         ]
                         ()
             ]
@@ -271,11 +146,11 @@ suite =
             , test "test_parse_binary_list_cons_returns_binop" <| \_ -> Expect.equal (parse [ Name "a", Operator ">+", Name "b" ]) <| Ok (Binop LIST_CONS ( Var "a", Var "b" ))
             , test "test_parse_binary_list_append_returns_binop" <| \_ -> Expect.equal (parse [ Name "a", Operator "+<", Name "b" ]) <| Ok (Binop LIST_APPEND ( Var "a", Var "b" ))
             , test "test_parse_binary_op_returns_binop" <| \_ -> expectTodo
-            , test "test_parse_empty_list" <| \_ -> Expect.equal (parse [ LeftBracket (), RightBracket () ]) <| Ok (List [])
-            , test "test_parse_list_of_ints_returns_list" <| \_ -> Expect.equal (parse [ LeftBracket (), IntLit 1, Operator ",", IntLit 2, RightBracket () ]) <| Ok (List [ Int 1, Int 2 ])
-            , test "test_parse_list_with_only_comma_raises_parse_error" <| \_ -> expectError "unexpected token Operator (lineno=-1, value=',')" <| parse [ LeftBracket (), Operator ",", RightBracket () ]
-            , test "test_parse_list_with_two_commas_raises_parse_error" <| \_ -> expectError "unexpected token Operator (lineno=-1, value=',')" <| parse [ LeftBracket (), Operator ",", Operator ",", RightBracket () ]
-            , test "test_parse_list_with_trailing_comma_raises_parse_error" <| \_ -> expectError "unexpected token RightBracket (lineno=-1)" <| parse [ LeftBracket (), IntLit 1, Operator ",", RightBracket () ]
+            , test "test_parse_empty_list" <| \_ -> Expect.equal (parse [ LeftBracket, RightBracket ]) <| Ok (List [])
+            , test "test_parse_list_of_ints_returns_list" <| \_ -> Expect.equal (parse [ LeftBracket, IntLit 1, Operator ",", IntLit 2, RightBracket ]) <| Ok (List [ Int 1, Int 2 ])
+            , test "test_parse_list_with_only_comma_raises_parse_error" <| \_ -> expectError "unexpected token Operator (lineno=-1, value=',')" <| parse [ LeftBracket, Operator ",", RightBracket ]
+            , test "test_parse_list_with_two_commas_raises_parse_error" <| \_ -> expectError "unexpected token Operator (lineno=-1, value=',')" <| parse [ LeftBracket, Operator ",", Operator ",", RightBracket ]
+            , test "test_parse_list_with_trailing_comma_raises_parse_error" <| \_ -> expectError "unexpected token RightBracket (lineno=-1)" <| parse [ LeftBracket, IntLit 1, Operator ",", RightBracket ]
             , test "test_parse_assign" <| \_ -> Expect.equal (parse [ Name "a", Operator "=", IntLit 1 ]) <| Ok (Assign ( Var "a", Int 1 ))
             , test "test_parse_function_one_arg_returns_function" <| \_ -> Expect.equal (parse [ Name "a", Operator "->", Name "a", Operator "+", IntLit 1 ]) <| Ok (Function ( Var "a", Binop ADD ( Var "a", Int 1 ) ))
             , test "test_parse_function_two_args_returns_functions" <| \_ -> Expect.equal (parse [ Name "a", Operator "->", Name "b", Operator "->", Name "a", Operator "+", Name "b" ]) <| Ok (Function ( Var "a", Function ( Var "b", Binop ADD ( Var "a", Var "b" ) ) ))
@@ -288,19 +163,19 @@ suite =
             , test "test_parse_nested_assert" <| \_ -> Expect.equal (parse [ Name "a", Operator "?", Name "b", Operator "?", Name "c" ]) <| Ok (Assert ( Assert ( Var "a", Var "b" ), Var "c" ))
             , test "test_parse_mixed_assert_where" <| \_ -> Expect.equal (parse [ Name "a", Operator "?", Name "b", Operator ".", Name "c" ]) <| Ok (Where ( Assert ( Var "a", Var "b" ), Var "c" ))
             , test "test_parse_hastype" <| \_ -> Expect.equal (parse [ Name "a", Operator ":", Name "b" ]) <| Ok (Binop HASTYPE ( Var "a", Var "b" ))
-            , test "test_parse_hole" <| \_ -> Expect.equal (parse [ LeftParen (), RightParen () ]) <| Ok Hole
-            , test "test_parse_parenthesized_expression" <| \_ -> Expect.equal (parse [ LeftParen (), IntLit 1, Operator "+", IntLit 2, RightParen () ]) <| Ok (Binop ADD ( Int 1, Int 2 ))
-            , test "test_parse_parenthesized_add_mul" <| \_ -> Expect.equal (parse [ LeftParen (), IntLit 1, Operator "+", IntLit 2, RightParen (), Operator "*", IntLit 3 ]) <| Ok (Binop MUL ( Binop ADD ( Int 1, Int 2 ), Int 3 ))
+            , test "test_parse_hole" <| \_ -> Expect.equal (parse [ LeftParen, RightParen ]) <| Ok Hole
+            , test "test_parse_parenthesized_expression" <| \_ -> Expect.equal (parse [ LeftParen, IntLit 1, Operator "+", IntLit 2, RightParen ]) <| Ok (Binop ADD ( Int 1, Int 2 ))
+            , test "test_parse_parenthesized_add_mul" <| \_ -> Expect.equal (parse [ LeftParen, IntLit 1, Operator "+", IntLit 2, RightParen, Operator "*", IntLit 3 ]) <| Ok (Binop MUL ( Binop ADD ( Int 1, Int 2 ), Int 3 ))
             , test "test_parse_pipe" <| \_ -> Expect.equal (parse [ IntLit 1, Operator "|>", Name "f" ]) <| Ok (Apply ( Var "f", Int 1 ))
             , test "test_parse_nested_pipe" <| \_ -> Expect.equal (parse [ IntLit 1, Operator "|>", Name "f", Operator "|>", Name "g" ]) <| Ok (Apply ( Var "g", Apply ( Var "f", Int 1 ) ))
             , test "test_parse_reverse_pipe" <| \_ -> Expect.equal (parse [ Name "f", Operator "<|", IntLit 1 ]) <| Ok (Apply ( Var "f", Int 1 ))
             , test "test_parse_nested_reverse_pipe" <| \_ -> Expect.equal (parse [ Name "g", Operator "<|", Name "f", Operator "<|", IntLit 1 ]) <| Ok (Apply ( Var "g", Apply ( Var "f", Int 1 ) ))
-            , test "test_parse_empty_record" <| \_ -> Expect.equal (parse [ LeftBrace (), RightBrace () ]) <| Ok (Record [])
-            , test "test_parse_record_single_field" <| \_ -> Expect.equal (parse [ LeftBrace (), Name "a", Operator "=", IntLit 4, RightBrace () ]) <| Ok (Record [ ( "a", Int 4 ) ])
-            , test "test_parse_record_with_expression" <| \_ -> Expect.equal (parse [ LeftBrace (), Name "a", Operator "=", IntLit 1, Operator "+", IntLit 2, RightBrace () ]) <| Ok (Record [ ( "a", Binop ADD ( Int 1, Int 2 ) ) ])
-            , test "test_parse_record_multiple_fields" <| \_ -> Expect.equal (parse [ LeftBrace (), Name "a", Operator "=", IntLit 4, Operator ",", Name "b", Operator "=", StringLit "z", RightBrace () ]) <| Ok (Record [ ( "a", Int 4 ), ( "b", String "z" ) ])
+            , test "test_parse_empty_record" <| \_ -> Expect.equal (parse [ LeftBrace, RightBrace ]) <| Ok (Record [])
+            , test "test_parse_record_single_field" <| \_ -> Expect.equal (parse [ LeftBrace, Name "a", Operator "=", IntLit 4, RightBrace ]) <| Ok (Record [ ( "a", Int 4 ) ])
+            , test "test_parse_record_with_expression" <| \_ -> Expect.equal (parse [ LeftBrace, Name "a", Operator "=", IntLit 1, Operator "+", IntLit 2, RightBrace ]) <| Ok (Record [ ( "a", Binop ADD ( Int 1, Int 2 ) ) ])
+            , test "test_parse_record_multiple_fields" <| \_ -> Expect.equal (parse [ LeftBrace, Name "a", Operator "=", IntLit 4, Operator ",", Name "b", Operator "=", StringLit "z", RightBrace ]) <| Ok (Record [ ( "a", Int 4 ), ( "b", String "z" ) ])
             , test "test_non_variable_in_assignment_raises_parse_error" <| \_ -> Expect.equal (parse [ IntLit 3, Operator "=", IntLit 4 ]) <| Err "expected variable in assignment Int (value=3)"
-            , test "test_non_assign_in_record_constructor_raises_parse_error" <| \_ -> Expect.equal (parse [ LeftBrace (), IntLit 1, Operator ",", IntLit 2, RightBrace () ]) (Err "failed to parse variable assignment in record constructor")
+            , test "test_non_assign_in_record_constructor_raises_parse_error" <| \_ -> Expect.equal (parse [ LeftBrace, IntLit 1, Operator ",", IntLit 2, RightBrace ]) (Err "failed to parse variable assignment in record constructor")
             , test "test_parse_right_eval_returns_binop" <| \_ -> Expect.equal (parse [ Name "a", Operator "!", Name "b" ]) <| Ok (Binop RIGHT_EVAL ( Var "a", Var "b" ))
             , test "test_parse_right_eval_with_defs_returns_binop" <| \_ -> Expect.equal (parse [ Name "a", Operator "!", Name "b", Operator ".", Name "c" ]) <| Ok (Binop RIGHT_EVAL ( Var "a", Where ( Var "b", Var "c" ) ))
             , test "test_parse_match_no_cases_raises_parse_error" <| \_ -> Expect.equal (parse [ Operator "|" ]) (Err "unexpected end of input")
@@ -310,19 +185,19 @@ suite =
             , test "test_parse_compose_reverse" <| \_ -> Expect.equal (parse [ Name "f", Operator "<<", Name "g" ]) <| Ok (Function ( Var "$v0", Apply ( Var "f", Apply ( Var "g", Var "$v0" ) ) ))
             , test "test_parse_double_compose" <| \_ -> Expect.equal (parse [ Name "f", Operator "<<", Name "g", Operator "<<", Name "h" ]) <| Ok (Function ( Var "$v1", Apply ( Var "f", Apply ( Function ( Var "$v0", Apply ( Var "g", Apply ( Var "h", Var "$v0" ) ) ), Var "$v1" ) ) ))
             , test "test_boolean_and_binds_tighter_than_or" <| \_ -> Expect.equal (parse [ Name "x", Operator "||", Name "y", Operator "&&", Name "z" ]) <| Ok (Binop BOOL_OR ( Var "x", Binop BOOL_AND ( Var "y", Var "z" ) ))
-            , test "test_parse_list_spread" <| \_ -> Expect.equal (parse [ LeftBracket (), IntLit 1, Operator ",", Operator "...", RightBracket () ]) <| Ok (List [ Int 1, Spread Nothing ])
-            , test "test_parse_list_with_non_name_expr_after_spread_raises_parse_error" <| \_ -> expectError "unexpected token IntLit (lineno=-1, value=1)" <| parse [ LeftBracket (), IntLit 1, Operator ",", Operator "...", IntLit 2, RightBracket () ]
-            , test "test_parse_list_with_named_spread" <| \_ -> Expect.equal (parse [ LeftBracket (), IntLit 1, Operator ",", Operator "...", Name "rest", RightBracket () ]) <| Ok (List [ Int 1, Spread (Just "rest") ])
-            , test "test_parse_list_spread_beginning_raises_parse_error" <| \_ -> expectError "spread must come at end of list match" <| parse [ LeftBracket (), Operator "...", Operator ",", IntLit 1, RightBracket () ]
-            , test "test_parse_list_named_spread_beginning_raises_parse_error" <| \_ -> expectError "spread must come at end of list match" <| parse [ LeftBracket (), Operator "...", Name "rest", Operator ",", IntLit 1, RightBracket () ]
-            , test "test_parse_list_spread_middle_raises_parse_error" <| \_ -> expectError "spread must come at end of list match" <| parse [ LeftBracket (), IntLit 1, Operator ",", Operator "...", Operator ",", IntLit 1, RightBracket () ]
-            , test "test_parse_list_named_spread_middle_raises_parse_error" <| \_ -> expectError "spread must come at end of list match" <| parse [ LeftBracket (), IntLit 1, Operator ",", Operator "...", Name "rest", Operator ",", IntLit 1, RightBracket () ]
-            , test "test_parse_record_spread" <| \_ -> Expect.equal (parse [ LeftBrace (), Name "x", Operator "=", IntLit 1, Operator ",", Operator "...", RightBrace () ]) <| Ok (Record [ ( "x", Int 1 ), ( "...", Spread Nothing ) ])
-            , test "test_parse_record_spread_beginning_raises_parse_error" <| \_ -> expectError "spread must come at end of record match" <| parse [ LeftBrace (), Operator "...", Operator ",", Name "x", Operator "=", IntLit 1, RightBrace () ]
-            , test "test_parse_record_spread_middle_raises_parse_error" <| \_ -> expectError "spread must come at end of record match" <| parse [ LeftBrace (), Name "x", Operator "=", IntLit 1, Operator ",", Operator "...", Operator ",", Name "y", Operator "=", IntLit 2, RightBrace () ]
-            , test "test_parse_record_with_only_comma_raises_parse_error" <| \_ -> expectError "unexpected token Operator (lineno=-1, value=',')" <| parse [ LeftBrace (), Operator ",", RightBrace () ]
-            , test "test_parse_record_with_two_commas_raises_parse_error" <| \_ -> expectError "unexpected token Operator (lineno=-1, value=',')" <| parse [ LeftBrace (), Operator ",", Operator ",", RightBrace () ]
-            , test "test_parse_record_with_trailing_comma_raises_parse_error" <| \_ -> expectError "unexpected token RightBrace (lineno=-1)" <| parse [ LeftBrace (), Name "x", Operator "=", IntLit 1, Operator ",", RightBrace () ]
+            , test "test_parse_list_spread" <| \_ -> Expect.equal (parse [ LeftBracket, IntLit 1, Operator ",", Operator "...", RightBracket ]) <| Ok (List [ Int 1, Spread Nothing ])
+            , test "test_parse_list_with_non_name_expr_after_spread_raises_parse_error" <| \_ -> expectError "unexpected token IntLit (lineno=-1, value=1)" <| parse [ LeftBracket, IntLit 1, Operator ",", Operator "...", IntLit 2, RightBracket ]
+            , test "test_parse_list_with_named_spread" <| \_ -> Expect.equal (parse [ LeftBracket, IntLit 1, Operator ",", Operator "...", Name "rest", RightBracket ]) <| Ok (List [ Int 1, Spread (Just "rest") ])
+            , test "test_parse_list_spread_beginning_raises_parse_error" <| \_ -> expectError "spread must come at end of list match" <| parse [ LeftBracket, Operator "...", Operator ",", IntLit 1, RightBracket ]
+            , test "test_parse_list_named_spread_beginning_raises_parse_error" <| \_ -> expectError "spread must come at end of list match" <| parse [ LeftBracket, Operator "...", Name "rest", Operator ",", IntLit 1, RightBracket ]
+            , test "test_parse_list_spread_middle_raises_parse_error" <| \_ -> expectError "spread must come at end of list match" <| parse [ LeftBracket, IntLit 1, Operator ",", Operator "...", Operator ",", IntLit 1, RightBracket ]
+            , test "test_parse_list_named_spread_middle_raises_parse_error" <| \_ -> expectError "spread must come at end of list match" <| parse [ LeftBracket, IntLit 1, Operator ",", Operator "...", Name "rest", Operator ",", IntLit 1, RightBracket ]
+            , test "test_parse_record_spread" <| \_ -> Expect.equal (parse [ LeftBrace, Name "x", Operator "=", IntLit 1, Operator ",", Operator "...", RightBrace ]) <| Ok (Record [ ( "x", Int 1 ), ( "...", Spread Nothing ) ])
+            , test "test_parse_record_spread_beginning_raises_parse_error" <| \_ -> expectError "spread must come at end of record match" <| parse [ LeftBrace, Operator "...", Operator ",", Name "x", Operator "=", IntLit 1, RightBrace ]
+            , test "test_parse_record_spread_middle_raises_parse_error" <| \_ -> expectError "spread must come at end of record match" <| parse [ LeftBrace, Name "x", Operator "=", IntLit 1, Operator ",", Operator "...", Operator ",", Name "y", Operator "=", IntLit 2, RightBrace ]
+            , test "test_parse_record_with_only_comma_raises_parse_error" <| \_ -> expectError "unexpected token Operator (lineno=-1, value=',')" <| parse [ LeftBrace, Operator ",", RightBrace ]
+            , test "test_parse_record_with_two_commas_raises_parse_error" <| \_ -> expectError "unexpected token Operator (lineno=-1, value=',')" <| parse [ LeftBrace, Operator ",", Operator ",", RightBrace ]
+            , test "test_parse_record_with_trailing_comma_raises_parse_error" <| \_ -> expectError "unexpected token RightBrace (lineno=-1)" <| parse [ LeftBrace, Name "x", Operator "=", IntLit 1, Operator ",", RightBrace ]
             , test "test_parse_variant_returns_variant" <| \_ -> Expect.equal (parse [ VariantToken "abc", IntLit 1 ]) <| Ok (Variant ( "abc", Int 1 ))
             , test "test_match_with_variant" <| \_ -> Expect.equal (Result.andThen parse (lex "| #true () -> 123")) <| Ok (MatchFunction [ MatchCase ( true, Int 123 ) ])
             , test "test_binary_and_with_variant_args" <| \_ -> Expect.equal (Result.andThen parse (lex "#true () && #false ()")) <| Ok (Binop BOOL_AND ( true, false ))
