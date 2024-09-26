@@ -233,12 +233,12 @@ type MatchCase
 
 true : Scrap
 true =
-    Variant ( "true", List [] )
+    Variant ( "true", Hole )
 
 
 false : Scrap
 false =
-    Variant ( "false", List [] )
+    Variant ( "false", Hole )
 
 
 type alias Prec =
@@ -820,6 +820,274 @@ matchList objItems patternItems =
     matchHelper objItems patternItems []
 
 
+type alias BinopHandler =
+    Env -> Scrap -> Scrap -> Result String Scrap
+
+
+bool : Bool -> Scrap
+bool x =
+    if x then
+        true
+
+    else
+        false
+
+
+binopHandlers : Dict String BinopHandler
+binopHandlers =
+    Dict.fromList
+        [ ( "ADD"
+          , \env x y ->
+                Result.map2
+                    (\a b -> wrapInferredNumberType (a + b))
+                    (evalNumber env x)
+                    (evalNumber env y)
+          )
+        , ( "SUB"
+          , \env x y ->
+                Result.map2
+                    (\a b -> wrapInferredNumberType (a - b))
+                    (evalNumber env x)
+                    (evalNumber env y)
+          )
+        , ( "MUL"
+          , \env x y ->
+                Result.map2
+                    (\a b -> wrapInferredNumberType (a * b))
+                    (evalNumber env x)
+                    (evalNumber env y)
+          )
+        , ( "DIV"
+          , \env x y ->
+                Result.map2
+                    (\a b -> wrapInferredNumberType (a / b))
+                    (evalNumber env x)
+                    (evalNumber env y)
+          )
+        , ( "FLOOR_DIV"
+          , \env x y ->
+                Result.map2
+                    (\a b -> wrapInferredNumberType (toFloat (floor (a / b))))
+                    (evalNumber env x)
+                    (evalNumber env y)
+          )
+        , ( "EXP"
+          , \env x y ->
+                Result.map2
+                    (\a b -> wrapInferredNumberType (a ^ b))
+                    (evalNumber env x)
+                    (evalNumber env y)
+          )
+        , ( "MOD"
+          , \env x y ->
+                Result.map2
+                    (\a b -> wrapInferredNumberType (toFloat (modBy (round b) (round a))))
+                    (evalNumber env x)
+                    (evalNumber env y)
+          )
+        , ( "EQUAL"
+          , \env x y ->
+                Result.map2
+                    (\a b -> bool (a == b))
+                    (eval ( env, x ))
+                    (eval ( env, y ))
+          )
+        , ( "NOT_EQUAL"
+          , \env x y ->
+                Result.map2
+                    (\a b -> bool (a /= b))
+                    (eval ( env, x ))
+                    (eval ( env, y ))
+          )
+        , ( "LESS"
+          , \env x y ->
+                Result.map2
+                    (\a b -> bool (a < b))
+                    (evalNumber env x)
+                    (evalNumber env y)
+          )
+        , ( "GREATER"
+          , \env x y ->
+                Result.map2
+                    (\a b -> bool (a > b))
+                    (evalNumber env x)
+                    (evalNumber env y)
+          )
+        , ( "LESS_EQUAL"
+          , \env x y ->
+                Result.map2
+                    (\a b -> bool (a <= b))
+                    (evalNumber env x)
+                    (evalNumber env y)
+          )
+        , ( "GREATER_EQUAL"
+          , \env x y ->
+                Result.map2
+                    (\a b -> bool (a >= b))
+                    (evalNumber env x)
+                    (evalNumber env y)
+          )
+        , ( "BOOL_AND"
+          , \env x y ->
+                Result.map2
+                    (\a b -> bool (a && b))
+                    (evalBool env x)
+                    (evalBool env y)
+          )
+        , ( "BOOL_OR"
+          , \env x y ->
+                Result.map2
+                    (\a b -> bool (a || b))
+                    (evalBool env x)
+                    (evalBool env y)
+          )
+        , ( "STRING_CONCAT"
+          , \env x y ->
+                Result.map2
+                    (\a b -> String (a ++ b))
+                    (evalString env x)
+                    (evalString env y)
+          )
+        , ( "LIST_CONS"
+          , \env x y ->
+                Result.map2
+                    (\a b -> List (a :: b))
+                    (eval ( env, x ))
+                    (evalList env y)
+          )
+        , ( "LIST_APPEND"
+          , \env x y ->
+                Result.map2
+                    (\a b -> List (a ++ [ b ]))
+                    (evalList env x)
+                    (eval ( env, y ))
+          )
+        , ( "RIGHT_EVAL"
+          , \env _ y ->
+                eval ( env, y )
+          )
+        ]
+
+
+wrapInferredNumberType : Float -> Scrap
+wrapInferredNumberType x =
+    if toFloat (round x) == x then
+        Int (round x)
+
+    else
+        Float x
+
+
+evalNumber : Env -> Scrap -> Result String Float
+evalNumber env scrap =
+    case eval ( env, scrap ) of
+        Ok (Int i) ->
+            Ok (toFloat i)
+
+        Ok (Float f) ->
+            Ok f
+
+        _ ->
+            Err "Expected a number"
+
+
+evalBool : Env -> Scrap -> Result String Bool
+evalBool env scrap =
+    case eval ( env, scrap ) of
+        Ok (Variant ( "true", Hole )) ->
+            Ok True
+
+        Ok (Variant ( "false", Hole )) ->
+            Ok False
+
+        _ ->
+            Err "Expected a boolean"
+
+
+evalString : Env -> Scrap -> Result String String
+evalString env scrap =
+    case eval ( env, scrap ) of
+        Ok (String s) ->
+            Ok s
+
+        _ ->
+            Err "Expected a string"
+
+
+evalList : Env -> Scrap -> Result String (List Scrap)
+evalList env scrap =
+    case eval ( env, scrap ) of
+        Ok (List items) ->
+            Ok items
+
+        _ ->
+            Err "Expected a list"
+
+
+binopKindToString : BinopKind -> String
+binopKindToString kind =
+    case kind of
+        ADD ->
+            "ADD"
+
+        SUB ->
+            "SUB"
+
+        MUL ->
+            "MUL"
+
+        DIV ->
+            "DIV"
+
+        FLOOR_DIV ->
+            "FLOOR_DIV"
+
+        EXP ->
+            "EXP"
+
+        MOD ->
+            "MOD"
+
+        EQUAL ->
+            "EQUAL"
+
+        NOT_EQUAL ->
+            "NOT_EQUAL"
+
+        LESS ->
+            "LESS"
+
+        GREATER ->
+            "GREATER"
+
+        LESS_EQUAL ->
+            "LESS_EQUAL"
+
+        GREATER_EQUAL ->
+            "GREATER_EQUAL"
+
+        BOOL_AND ->
+            "BOOL_AND"
+
+        BOOL_OR ->
+            "BOOL_OR"
+
+        STRING_CONCAT ->
+            "STRING_CONCAT"
+
+        LIST_CONS ->
+            "LIST_CONS"
+
+        LIST_APPEND ->
+            "LIST_APPEND"
+
+        RIGHT_EVAL ->
+            "RIGHT_EVAL"
+
+        HASTYPE ->
+            "HASTYPE"
+
+
 eval : ( Env, Scrap ) -> Result String Scrap
 eval ( env, exp ) =
     case exp of
@@ -938,8 +1206,16 @@ eval ( env, exp ) =
         Spread _ ->
             Err "Cannot evaluate a spread"
 
-        _ ->
-            Err "TODO: unknown eval"
+        Binop kind ( left, right ) ->
+            case Dict.get (binopKindToString kind) binopHandlers of
+                Just handler ->
+                    handler env left right
+
+                Nothing ->
+                    Err ("Unsupported binary operation: " ++ binopKindToString kind)
+
+        exp_ ->
+            Err ("TODO: unknown eval: " ++ Debug.toString exp_)
 
 
 applyMatchFunction : Env -> List MatchCase -> Scrap -> Result String Scrap
