@@ -43,7 +43,7 @@ isIdentifierStartChar c =
 
 isIdentifierChar : Char -> Bool
 isIdentifierChar c =
-    Char.isAlphaNum c || c == '-' || c == '$' || c == '\''
+    Char.isAlphaNum c || c == '$' || c == '\'' -- || c == '-' 
 
 
 isOperatorChar : Char -> Bool
@@ -1308,11 +1308,9 @@ bootEnv =
             | [x, ...xs] -> f x || any f xs
           """
     in
+    -- (parsePrelude prelude)
     Dict.union stdlib Dict.empty
 
-
-
--- (parsePrelude prelude)
 
 
 run : String -> Result String Scrap
