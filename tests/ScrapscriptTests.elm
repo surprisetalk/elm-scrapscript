@@ -412,7 +412,7 @@ suite =
             , test "test_match_variant_record" <| \_ -> expectEqual ( run """f #add {x = 3, y = 4} . f = | # b () -> "foo" | #add {x = x, y = y} -> x + y""", Ok (Int 7) )
             ]
         , describe "StdLibTests"
-            [ test "test_stdlib_add" <| \_ -> expectEqual ( run (stdlib "$$add 3 4"), Ok (Int 7) )
+            [ test "test_stdlib_add" <| \_ -> expectEqual ( run "$$add 3 4", Ok (Int 7) )
             , test "test_stdlib_quote" <| \_ -> expectEqual ( run "$$quote (3 + 4)", Ok (Binop ADD ( Int 3, Int 4 )) )
             , test "test_stdlib_quote_pipe" <| \_ -> expectEqual ( run "3 + 4 |> $$quote", Ok (Binop ADD ( Int 3, Int 4 )) )
             , test "test_stdlib_quote_reverse_pipe" <| \_ -> expectEqual ( run "$$quote <| 3 + 4", Ok (Binop ADD ( Int 3, Int 4 )) )
@@ -420,9 +420,9 @@ suite =
             , test "test_stdlib_serialize_expr" <| \_ -> expectTodo
             , test "test_stdlib_deserialize" <| \_ -> expectEqual ( run "$$deserialize ~~aQY=", Ok (Int 3) )
             , test "test_stdlib_deserialize_expr" <| \_ -> expectEqual ( run "$$deserialize ~~KwIraQJpBA==", Ok (Binop ADD ( Int 1, Int 2 )) )
-            , test "test_stdlib_listlength_empty_list_returns_zero" <| \_ -> expectEqual ( run (stdlib "$$listlength []"), Ok (Int 0) )
-            , test "test_stdlib_listlength_returns_length" <| \_ -> expectEqual ( run (stdlib "$$listlength [1,2,3]"), Ok (Int 3) )
-            , test "test_stdlib_listlength_with_non_list_raises_type_error" <| \_ -> expectError "listlength expected List, but got Int" <| run (stdlib "$$listlength 1")
+            , test "test_stdlib_listlength_empty_list_returns_zero" <| \_ -> expectEqual ( run "$$listlength []", Ok (Int 0) )
+            , test "test_stdlib_listlength_returns_length" <| \_ -> expectEqual ( run "$$listlength [1,2,3]", Ok (Int 3) )
+            , test "test_stdlib_listlength_with_non_list_raises_type_error" <| \_ -> expectError "listlength expected List, but got Int" <| run "$$listlength 1"
             ]
         , describe "PreludeTests"
             [ test "test_id_returns_input" <| \_ -> expectEqual ( run "id 123", Ok (Int 123) )
