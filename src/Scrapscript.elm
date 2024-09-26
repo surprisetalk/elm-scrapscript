@@ -43,12 +43,11 @@ isIdentifierStartChar c =
 
 isIdentifierChar : Char -> Bool
 isIdentifierChar c =
-    Char.isAlphaNum c || c == '$' || c == '\'' -- || c == '-' 
+    Char.isAlphaNum c || c == '$' || c == '\''
 
 
-isOperatorChar : Char -> Bool
-isOperatorChar c =
-    Set.member c (Set.fromList [ '+', '-', '*', '/', '<', '>', '=', '!', '&', '|', '^', '%', '~' ])
+
+-- || c == '-'
 
 
 isSpaceChar : Char -> Bool
@@ -81,12 +80,12 @@ exprParser =
 tokenParser : Parser Token
 tokenParser =
     oneOf
-        [ stringLitParser
+        [ symbolParser
+        , operatorParser
+        , stringLitParser
         , numberParser
         , variantParser
         , bytesParser
-        , symbolParser
-        , operatorParser
         , nameParser
         ]
 
@@ -155,15 +154,7 @@ symbolParser =
 
 operatorParser : Parser Token
 operatorParser =
-    Parser.getChompedString (Parser.chompWhile isOperatorChar)
-        |> Parser.andThen
-            (\op ->
-                if String.isEmpty op then
-                    Parser.problem "Expected operator"
-
-                else
-                    Parser.succeed (Operator op)
-            )
+    ps |> Dict.keys |> List.filter ((/=) "") |> List.sort |> List.reverse |> List.map (\op -> symbol op |> Parser.map (always (Operator op))) |> oneOf
 
 
 varParser : Parser String
@@ -1310,7 +1301,6 @@ bootEnv =
     in
     -- (parsePrelude prelude)
     Dict.union stdlib Dict.empty
-
 
 
 run : String -> Result String Scrap
