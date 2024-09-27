@@ -21,7 +21,6 @@ type Scrap
     | Var String
     | List (List Scrap)
     | Record (Dict String Scrap)
-    | Function Scrap Scrap
     | Apply Scrap Scrap
     | Binop String Scrap Scrap
     | Hole
@@ -83,14 +82,14 @@ eval env scrap =
                 fields
                 |> Result.map Record
 
-        Function arg body ->
+        Binop "->" arg body ->
             Ok scrap
 
         Apply func arg ->
             Result.map2
                 (\evaluatedFunc evaluatedArg ->
                     case evaluatedFunc of
-                        Function (Var argName) body ->
+                        Binop "->" (Var argName) body ->
                             eval (Dict.insert argName evaluatedArg env) body
 
                         _ ->
@@ -313,7 +312,10 @@ scrapParser =
                             |. spaces
                             |= varParser
                             |. spaces
-                            |= P.subExpression 7 config
+                            |= oneOf
+                                [ P.subExpression 7 config
+                                , P.succeed Hole
+                                ]
                     , P.literal <|
                         P.succeed Var
                             |= varParser
@@ -363,6 +365,9 @@ scrapParser =
                                 , inner = \c -> Char.isDigit c || c == '.'
                                 , reserved = Set.empty
                                 }
+
+                    -- TODO
+                    , P.prefix 5 (P.symbol "| ") identity
 
                     -- , P.prefix 10 (P.symbol "-") (Binop "-" (Int 0))
                     , P.constant (P.keyword "...") (Spread Nothing)
