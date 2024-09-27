@@ -5,6 +5,7 @@ import Char
 import Dict exposing (Dict)
 import Parser as P exposing ((|.), (|=), Parser, Problem, andThen, backtrackable, float, int, lazy, map, oneOf, spaces, succeed, symbol)
 import Pratt as P
+import Result.Extra as Result
 import Set exposing (Set)
 
 
@@ -169,14 +170,9 @@ eval env scrap =
                 |> Result.andThen identity
 
 
-run : String -> Result String Scrap
-run input =
-    case parse input of
-        Ok ast ->
-            eval Dict.empty ast
-
-        Err errors ->
-            Err ("Parse error: " ++ deadEndsToString errors)
+run : Env -> String -> Result String Scrap
+run env =
+    parse >> Result.andThen (eval env)
 
 
 deadEndsToString : List P.DeadEnd -> String
@@ -235,9 +231,10 @@ problemToString p =
             "bad repeat"
 
 
-parse : String -> Result (List P.DeadEnd) Scrap
+parse : String -> Result String Scrap
 parse input =
     P.run scrapParser input
+        |> Result.mapError (\errors -> "Parse error: " ++ deadEndsToString errors)
 
 
 space : Parser ()
@@ -254,20 +251,49 @@ varParser =
         }
 
 
+oneOfMany : List (P.Config Scrap -> Parser Scrap) -> List (P.Config Scrap -> Parser Scrap)
+oneOfMany parsers =
+    let
+        parser : P.Config Scrap -> Parser Scrap
+        parser config =
+            List.map (\f -> f config) parsers |> oneOf
+    in
+    [ \config ->
+        P.succeed (List.foldl Apply)
+            |= parser config
+            |= P.loop []
+                (\terms ->
+                    oneOf
+                        [ succeed identity
+                            |. space
+                            |. spaces
+                            |= oneOf
+                                [ succeed (\term -> P.Loop (term :: terms))
+                                    |= parser config
+                                , succeed (P.Done terms)
+                                ]
+                        , succeed (P.Done terms)
+                        ]
+                )
+    ]
+
+
 scrapParser : Parser Scrap
 scrapParser =
     P.succeed identity
         |. P.spaces
         |= P.expression
-                { spaces = P.spaces
-                , oneOf =
-                    [ P.literal <|
-                        succeed Spread
-                            |. symbol "..."
-                            |= P.oneOf
-                                [ P.succeed Just |= varParser
-                                , P.succeed Nothing
-                                ]
+            { spaces = P.spaces
+            , oneOf =
+                oneOfMany
+                    [ P.constant (P.keyword "()") Hole
+                    , \config ->
+                        P.succeed identity
+                            |. P.symbol "("
+                            |. spaces
+                            |= P.subExpression 0 config
+                            |. spaces
+                            |. P.symbol ")"
                     , P.literal <|
                         P.succeed String
                             |. P.symbol "\""
@@ -282,9 +308,9 @@ scrapParser =
                         P.succeed Bytes
                             |. P.symbol "~~"
                             |= P.getChompedString (P.chompWhile (\c -> c /= ' ' && c /= '\n'))
-                    , P.literal <| 
-                      P.succeed Var 
-                        |= varParser
+                    , P.literal <|
+                        P.succeed Var
+                            |= varParser
                     , \config ->
                         P.sequence
                             { start = "["
@@ -311,9 +337,6 @@ scrapParser =
                             , trailing = P.Forbidden
                             }
                             |> P.map (Dict.fromList >> Record)
-                    , P.literal <|
-                        P.succeed Hole
-                            |. symbol "()"
                     , \config ->
                         succeed Variant
                             |. symbol "#"
@@ -321,37 +344,66 @@ scrapParser =
                             |. spaces
                             |= P.subExpression 7 config
                     , P.literal <|
-                        P.number
-                            { int = Just Int
-                            , hex = Nothing
-                            , octal = Nothing
-                            , binary = Nothing
-                            , float = Just Float
-                            }
+                        -- supreme jank
+                        P.andThen
+                            (\x ->
+                                case ( String.toInt x, String.toFloat x ) of
+                                    ( Just n, _ ) ->
+                                        P.succeed (Int n)
+
+                                    ( _, Just n ) ->
+                                        P.succeed (Float n)
+
+                                    _ ->
+                                        P.problem ("bad number: " ++ x)
+                            )
+                        <|
+                            P.variable
+                                { start = Char.isDigit
+                                , inner = \c -> Char.isDigit c || c == '.'
+                                , reserved = Set.empty
+                                }
+
+                    -- , P.prefix 10 (P.symbol "...") (Spread)
+                    -- , P.prefix 10 (P.symbol "-") (Binop "-" (Int 0))
                     ]
-                , andThenOneOf =
-                    [ P.infixRight 20 (P.symbol "->") (Binop "->")
-                    , P.infixLeft 19 (P.symbol ">>") (Binop ">>")
-                    , P.infixLeft 15 (P.symbol "++") (Binop "++")
-                    , P.infixLeft 16 (P.symbol "+<") (Binop "+<")
-                    , P.infixRight 15 (P.symbol ">+") (Binop ">+")
-                    , P.infixLeft 14 (P.symbol ">=") (Binop ">=")
-                    , P.infixLeft 14 (P.symbol "<=") (Binop "<=")
-                    , P.infixLeft 10 (P.symbol "|>") (Binop "|>")
-                    , P.infixLeft 13 (P.symbol "/=") (Binop "/=")
-                    , P.infixLeft 13 (P.symbol "==") (Binop "==")
-                    , P.infixLeft 18 (P.symbol "//") (Binop "//")
-                    , P.infixRight 12 (P.symbol "&&") (Binop "&&")
-                    , P.infixRight 11 (P.symbol "||") (Binop "||")
-                    , P.infixRight 11 (P.symbol "^^") (Binop "^^")
-                    , P.infixLeft 18 (P.symbol "*") (Binop "*")
-                    , P.infixLeft 17 (P.symbol "+") (Binop "+")
-                    , P.infixLeft 17 (P.symbol "-") (Binop "-")
-                    , P.infixLeft 14 (P.symbol "<") (Binop "<")
-                    , P.infixLeft 14 (P.symbol ">") (Binop ">")
-                    , P.infixLeft 18 (P.symbol "/") (Binop "/")
-                    , P.infixRight 94 (P.symbol ".") (Binop ".")
-                    ]
-                }
+            , andThenOneOf =
+                [ P.infixRight 2000 (P.symbol "::") (Binop "::")
+                , P.infixLeft 16 (P.symbol ">>") (Binop ">>")
+                , P.infixLeft 16 (P.symbol "<<") (Binop "<<")
+                , P.infixLeft 14 (P.symbol "//") (Binop "//")
+                , P.infixRight 12 (P.symbol ">*") (Binop ">*")
+                , P.infixRight 12 (P.symbol "++") (Binop "++")
+                , P.infixLeft 12 (P.symbol ">+") (Binop ">+")
+                , P.infixRight 12 (P.symbol "+<") (Binop "+<")
+                , P.infixLeft 11 (P.symbol "==") (Binop "==")
+                , P.infixLeft 11 (P.symbol "/=") (Binop "/=")
+                , P.infixLeft 11 (P.symbol "<=") (Binop "<=")
+                , P.infixLeft 11 (P.symbol ">=") (Binop ">=")
+                , P.infixRight 10 (P.symbol "&&") (Binop "&&")
+                , P.infixRight 9 (P.symbol "||") (Binop "||")
+                , P.infixRight 8 (P.symbol "|>") (Binop "|>")
+                , P.infixLeft 8 (P.symbol "<|") (Binop "<|")
+                , P.infixLeft 6 (P.symbol "->") (Binop "->")
+
+                -- single chars after multichars
+                , P.infixRight 1001 (P.symbol "@") (Binop "@")
+                , P.infixRight 15 (P.symbol "^") (Binop "^")
+                , P.infixRight 14 (P.symbol "*") (Binop "*")
+                , P.infixRight 14 (P.symbol "/") (Binop "/")
+                , P.infixLeft 14 (P.symbol "%") (Binop "%")
+                , P.infixLeft 13 (P.symbol "+") (Binop "+")
+                , P.infixLeft 13 (P.symbol "-") (Binop "-")
+                , P.infixLeft 11 (P.symbol "<") (Binop "<")
+                , P.infixLeft 11 (P.symbol ">") (Binop ">")
+                , P.infixLeft 7 (P.symbol "#") (Binop "#")
+                , P.infixRight 5 (P.symbol "|") (Binop "|")
+                , P.infixLeft 5 (P.symbol ":") (Binop ":")
+                , P.infixRight 4 (P.symbol "=") (Binop "=")
+                , P.infixLeft 3 (P.symbol "!") (Binop "!")
+                , P.infixRight 3 (P.symbol ".") (Binop ".")
+                , P.infixRight 3 (P.symbol "?") (Binop "?")
+                ]
+            }
         |. P.spaces
         |. P.end
