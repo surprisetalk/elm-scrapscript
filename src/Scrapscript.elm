@@ -26,9 +26,7 @@ type Scrap
     | Binop String Scrap Scrap
     | Hole
     | Variant String Scrap
-    | Where Scrap Scrap
-    | Assert Scrap Scrap
-    | Spread (Maybe String)
+    | Spread (Maybe Scrap)
 
 
 true : Scrap
@@ -106,7 +104,7 @@ eval env scrap =
             eval env value
                 |> Result.map (Variant tag)
 
-        Where body binding ->
+        Binop "." body binding ->
             case binding of
                 Binop "=" (Var var) value ->
                     eval env value
@@ -118,7 +116,7 @@ eval env scrap =
                 _ ->
                     Err "Invalid binding in where expression"
 
-        Assert value cond ->
+        Binop "?" value cond ->
             eval env cond
                 |> Result.andThen
                     (\evaluatedCond ->
@@ -239,14 +237,15 @@ parse input =
 
 space : Parser ()
 space =
-    P.chompIf ((==) ' ')
+    P.chompIf (\c -> c == ' ' || c == '\t' || c == '\n' || c == '\u{000D}')
 
 
 varParser : Parser String
 varParser =
+    -- TODO: Change to kebab case.
     P.variable
         { start = \c -> Char.isLower c || c == '$'
-        , inner = \c -> Char.isAlphaNum c || c == '-' || c == '\''
+        , inner = \c -> Char.isAlphaNum c || c == '$' || c == '_' || c == '\''
         , reserved = Set.empty
         }
 
@@ -308,6 +307,13 @@ scrapParser =
                         P.succeed Bytes
                             |. P.symbol "~~"
                             |= P.getChompedString (P.chompWhile (\c -> c /= ' ' && c /= '\n'))
+                    , \config ->
+                        succeed Variant
+                            |. symbol "#"
+                            |. spaces
+                            |= varParser
+                            |. spaces
+                            |= P.subExpression 7 config
                     , P.literal <|
                         P.succeed Var
                             |= varParser
@@ -337,12 +343,6 @@ scrapParser =
                             , trailing = P.Forbidden
                             }
                             |> P.map (Dict.fromList >> Record)
-                    , \config ->
-                        succeed Variant
-                            |. symbol "#"
-                            |= varParser
-                            |. spaces
-                            |= P.subExpression 7 config
                     , P.literal <|
                         -- supreme jank
                         P.andThen
@@ -364,8 +364,11 @@ scrapParser =
                                 , reserved = Set.empty
                                 }
 
-                    -- , P.prefix 10 (P.symbol "...") (Spread)
                     -- , P.prefix 10 (P.symbol "-") (Binop "-" (Int 0))
+                    , P.constant (P.keyword "...") (Spread Nothing)
+                    , \config ->
+                        P.succeed (Spread << Just)
+                            |= P.prefix 20 (P.symbol "...") identity config
                     ]
             , andThenOneOf =
                 [ P.infixRight 2000 (P.symbol "::") (Binop "::")
