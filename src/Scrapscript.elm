@@ -167,12 +167,19 @@ eval env exp =
                         ( "*", Float a, Float b ) ->
                             Ok (Float (a * b))
 
-                        ( "/", Int a, Int b ) ->
+                        ( "//", Int a, Int b ) ->
                             if b == 0 then
                                 Err "Division by zero"
 
                             else
                                 Ok (Int (a // b))
+
+                        ( "/", Int a, Int b ) ->
+                            if b == 0 then
+                                Err "Division by zero"
+
+                            else
+                                Ok (Float (toFloat a / toFloat b))
 
                         ( "/", Float a, Float b ) ->
                             if b == 0 then
