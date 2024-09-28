@@ -1,12 +1,11 @@
 module Scrapscript exposing (Scrap(..), parse, run)
 
-import Bitwise
 import Char
 import Dict exposing (Dict)
+import Html exposing (b)
 import Parser as P exposing ((|.), (|=), Parser, Problem, andThen, backtrackable, float, int, lazy, map, oneOf, spaces, succeed, symbol)
 import Pratt as P
-import Result.Extra as Result
-import Set exposing (Set)
+import Set
 
 
 type alias Env =
@@ -39,23 +38,29 @@ false =
     Variant "false" Hole
 
 
+check : Env -> Scrap -> Result String ( Env, Scrap )
+check env x =
+    -- TODO
+    Ok ( Dict.empty, x )
+
+
 eval : Env -> Scrap -> Result String Scrap
-eval env scrap =
-    case scrap of
+eval env exp =
+    case exp of
         Bytes _ ->
-            Ok scrap
+            Ok exp
 
         Hole ->
-            Ok scrap
+            Ok exp
 
         Int _ ->
-            Ok scrap
+            Ok exp
 
         Float _ ->
-            Ok scrap
+            Ok exp
 
         Text _ ->
-            Ok scrap
+            Ok exp
 
         Var name ->
             Dict.get name env
@@ -173,143 +178,131 @@ eval env scrap =
 
 run : Env -> String -> Result String Scrap
 run env =
-    parse >> Result.andThen (eval env)
-
-
-deadEndsToString : List P.DeadEnd -> String
-deadEndsToString deadEnds =
-    String.concat (List.intersperse "; " (List.map deadEndToString deadEnds))
-
-
-deadEndToString : P.DeadEnd -> String
-deadEndToString deadend =
-    problemToString deadend.problem ++ " at row " ++ String.fromInt deadend.row ++ ", col " ++ String.fromInt deadend.col
-
-
-problemToString : Problem -> String
-problemToString p =
-    case p of
-        P.Expecting s ->
-            "expecting '" ++ s ++ "'"
-
-        P.ExpectingInt ->
-            "expecting int"
-
-        P.ExpectingHex ->
-            "expecting hex"
-
-        P.ExpectingOctal ->
-            "expecting octal"
-
-        P.ExpectingBinary ->
-            "expecting binary"
-
-        P.ExpectingFloat ->
-            "expecting float"
-
-        P.ExpectingNumber ->
-            "expecting number"
-
-        P.ExpectingVariable ->
-            "expecting variable"
-
-        P.ExpectingSymbol s ->
-            "expecting symbol '" ++ s ++ "'"
-
-        P.ExpectingKeyword s ->
-            "expecting keyword '" ++ s ++ "'"
-
-        P.ExpectingEnd ->
-            "expecting end"
-
-        P.UnexpectedChar ->
-            "unexpected char"
-
-        P.Problem s ->
-            "problem " ++ s
-
-        P.BadRepeat ->
-            "bad repeat"
+    parse
+        >> Result.andThen (check env)
+        >> Result.andThen (Tuple.second >> eval env)
 
 
 parse : String -> Result String Scrap
 parse input =
-    P.run scrapParser input
+    let
+        problemToString : Problem -> String
+        problemToString p =
+            case p of
+                P.Expecting s ->
+                    "expecting '" ++ s ++ "'"
+
+                P.ExpectingInt ->
+                    "expecting int"
+
+                P.ExpectingHex ->
+                    "expecting hex"
+
+                P.ExpectingOctal ->
+                    "expecting octal"
+
+                P.ExpectingBinary ->
+                    "expecting binary"
+
+                P.ExpectingFloat ->
+                    "expecting float"
+
+                P.ExpectingNumber ->
+                    "expecting number"
+
+                P.ExpectingVariable ->
+                    "expecting variable"
+
+                P.ExpectingSymbol s ->
+                    "expecting symbol '" ++ s ++ "'"
+
+                P.ExpectingKeyword s ->
+                    "expecting keyword '" ++ s ++ "'"
+
+                P.ExpectingEnd ->
+                    "expecting end"
+
+                P.UnexpectedChar ->
+                    "unexpected char"
+
+                P.Problem s ->
+                    "problem " ++ s
+
+                P.BadRepeat ->
+                    "bad repeat"
+
+        deadEndsToString : List P.DeadEnd -> String
+        deadEndsToString =
+            List.map (\deadend -> problemToString deadend.problem ++ " at row " ++ String.fromInt deadend.row ++ ", col " ++ String.fromInt deadend.col)
+                >> String.join "; "
+    in
+    P.run scrap input
         |> Result.mapError (\errors -> "Parse error: " ++ deadEndsToString errors)
 
 
-space : Parser ()
-space =
-    P.chompIf (\c -> c == ' ' || c == '\t' || c == '\n' || c == '\u{000D}')
-
-
-varParser : Parser String
-varParser =
-    -- TODO: Change to kebab case.
-    P.variable
-        { start = \c -> Char.isLower c || c == '$'
-        , inner = \c -> Char.isAlphaNum c || c == '$' || c == '_' || c == '\''
-        , reserved = Set.empty
-        }
-
-
-minus : Parser ()
-minus =
-    backtrackable <|
-        oneOf
-            [ symbol "->" |. P.problem "TODO: minus"
-            , symbol "-" |. P.succeed () |. P.commit ()
-            ]
-
-
-bar : Parser ()
-bar =
-    succeed identity
-        |. backtrackable (symbol "|")
-        |= oneOf
-            [ map (\_ -> True) (backtrackable (P.chompIf ((==) '|')))
-            , map (\_ -> True) (backtrackable (P.chompIf ((==) '>')))
-            , succeed False
-            ]
-        |> andThen
-            (\isBadEnding ->
-                if isBadEnding then
-                    P.problem "expecting `|`"
-
-                else
-                    P.commit ()
-            )
-
-
-oneOfMany : List (P.Config Scrap -> Parser Scrap) -> List (P.Config Scrap -> Parser Scrap)
-oneOfMany parsers =
+scrap : Parser Scrap
+scrap =
     let
-        parser : P.Config Scrap -> Parser Scrap
-        parser config =
-            List.map (\f -> f config) parsers |> oneOf
+        space : Parser ()
+        space =
+            P.chompIf (\c -> c == ' ' || c == '\t' || c == '\n' || c == '\u{000D}')
+
+        var : Parser String
+        var =
+            -- TODO: Change to kebab case.
+            P.variable
+                { start = \c -> Char.isLower c || c == '$'
+                , inner = \c -> Char.isAlphaNum c || c == '$' || c == '_' || c == '\''
+                , reserved = Set.empty
+                }
+
+        symbolUnless : String -> List String -> Parser ()
+        symbolUnless yes nos =
+            succeed identity
+                |. backtrackable (symbol yes)
+                |= oneOf (succeed False :: List.map (symbol >> backtrackable >> P.map (always True)) nos)
+                |> andThen
+                    (\isBadEnding ->
+                        if isBadEnding then
+                            P.problem ("expecting `" ++ yes ++ "` unfollowed by `" ++ String.join ", " nos ++ "`")
+
+                        else
+                            P.commit ()
+                    )
+
+        minus : Parser ()
+        minus =
+            symbolUnless "-" [ ">" ]
+
+        bar : Parser ()
+        bar =
+            symbolUnless "|" [ "|", ">" ]
+
+        some : Parser () -> Parser a -> Parser ( a, List a )
+        some s p =
+            P.succeed Tuple.pair
+                |= p
+                |= P.loop []
+                    (\xs ->
+                        oneOf
+                            [ succeed identity
+                                |. s
+                                |= oneOf
+                                    [ succeed (\x -> P.Loop (x :: xs))
+                                        |= p
+                                    , succeed (P.Done (List.reverse xs))
+                                    ]
+                            , succeed (P.Done (List.reverse xs))
+                            ]
+                    )
+
+        oneOfMany : List (P.Config Scrap -> Parser Scrap) -> List (P.Config Scrap -> Parser Scrap)
+        oneOfMany parsers =
+            [ \config ->
+                P.succeed (\( x, xs ) -> List.foldr Apply x xs)
+                    |= some (space |. spaces) (oneOf <| List.map (\f -> f config) parsers)
+            ]
     in
-    [ \config ->
-        P.succeed (List.foldl Apply)
-            |= parser config
-            |= P.loop []
-                (\terms ->
-                    oneOf
-                        [ succeed identity
-                            |. space
-                            |. spaces
-                            |= oneOf
-                                [ succeed (\term -> P.Loop (term :: terms))
-                                    |= parser config
-                                , succeed (P.Done terms)
-                                ]
-                        , succeed (P.Done terms)
-                        ]
-                )
-    ]
-
-
-scrapParser : Parser Scrap
-scrapParser =
     P.succeed identity
         |. P.spaces
         |= P.expression
@@ -345,7 +338,7 @@ scrapParser =
                         succeed Variant
                             |. symbol "#"
                             |. spaces
-                            |= varParser
+                            |= var
                             |. spaces
                             |= oneOf
                                 [ P.subExpression 7 config
@@ -353,7 +346,7 @@ scrapParser =
                                 ]
                     , P.literal <|
                         P.succeed Var
-                            |= varParser
+                            |= var
                     , \config ->
                         P.sequence
                             { start = "["
@@ -372,7 +365,7 @@ scrapParser =
                             , spaces = spaces
                             , item =
                                 succeed Tuple.pair
-                                    |= varParser
+                                    |= var
                                     |. spaces
                                     |. symbol "="
                                     |. spaces
@@ -381,7 +374,7 @@ scrapParser =
                             }
                             |> P.map (Dict.fromList >> Record)
                     , P.literal <|
-                        -- supreme jank
+                        -- TODO: redo this supreme jank
                         P.andThen
                             (\x ->
                                 case ( String.contains "." x, String.toInt x, String.toFloat x ) of
@@ -401,21 +394,13 @@ scrapParser =
                                 , reserved = Set.empty
                                 }
                     , \config ->
-                        P.succeed (\x xs -> Match (x :: xs))
-                            |. P.prefix 4 bar identity config
-                            |. spaces
-                            |= P.subExpression 5 config
-                            |. spaces
-                            |= P.loop []
-                                (\cases ->
-                                    oneOf
-                                        [ succeed (\case_ -> P.Loop (case_ :: cases))
-                                            |. P.prefix 4 bar identity config
-                                            |. spaces
-                                            |= P.subExpression 5 config
-                                            |. spaces
-                                        , succeed (P.Done (List.reverse cases))
-                                        ]
+                        P.succeed (\( x, xs ) -> Match (x :: xs))
+                            |= some spaces
+                                (P.succeed identity
+                                    |. P.prefix 4 bar identity config
+                                    |. spaces
+                                    |= P.subExpression 5 config
+                                    |. spaces
                                 )
                     , P.prefix 20 minus <|
                         \n_ ->
@@ -451,8 +436,6 @@ scrapParser =
                 , P.infixRight 8 (P.symbol "|>") (Binop "|>")
                 , P.infixLeft 8 (P.symbol "<|") (Binop "<|")
                 , P.infixRight 6 (P.symbol "->") (Binop "->")
-
-                -- single chars after multichars
                 , P.infixRight 1001 (P.symbol "@") (Binop "@")
                 , P.infixRight 15 (P.symbol "^") (Binop "^")
                 , P.infixRight 14 (P.symbol "*") (Binop "*")
