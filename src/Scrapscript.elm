@@ -13,7 +13,8 @@ type alias Env =
 
 
 type Scrap
-    = Int Int
+    = Hole
+    | Int Int
     | Float Float
     | Text String
     | Bytes String
@@ -22,10 +23,18 @@ type Scrap
     | Record (Dict String Scrap)
     | Apply Scrap Scrap
     | Binop String Scrap Scrap
-    | Hole
     | Variant String Scrap
     | Spread (Maybe Scrap)
     | Match (List Scrap)
+
+
+bool : Bool -> Scrap
+bool x =
+    if x then
+        true
+
+    else
+        false
 
 
 true : Scrap
@@ -112,17 +121,15 @@ eval env exp =
             eval env value
                 |> Result.map (Variant tag)
 
-        Binop "." body binding ->
-            case binding of
-                Binop "=" (Var var) value ->
-                    eval env value
-                        |> Result.andThen
-                            (\evaluatedValue ->
-                                eval (Dict.insert var evaluatedValue env) body
-                            )
+        Binop "." body (Binop "=" (Var var) value) ->
+            eval env value
+                |> Result.andThen
+                    (\evaluatedValue ->
+                        eval (Dict.insert var evaluatedValue env) body
+                    )
 
-                _ ->
-                    Err "Invalid binding in where expression"
+        Binop "." _ _ ->
+            Err "Invalid binding in where expression"
 
         Binop "?" value cond ->
             eval env cond
@@ -151,15 +158,28 @@ eval env exp =
                         ( "*", Int a, Int b ) ->
                             Ok (Int (a * b))
 
+                        ( "+", Float a, Float b ) ->
+                            Ok (Float (a + b))
+
+                        ( "-", Float a, Float b ) ->
+                            Ok (Float (a - b))
+
+                        ( "*", Float a, Float b ) ->
+                            Ok (Float (a * b))
+
                         ( "/", Int a, Int b ) ->
                             if b == 0 then
                                 Err "Division by zero"
 
                             else
-                                Ok (Float (toFloat a / toFloat b))
+                                Ok (Int (a // b))
 
-                        ( "++", Text a, Text b ) ->
-                            Ok (Text (a ++ b))
+                        ( "/", Float a, Float b ) ->
+                            if b == 0 then
+                                Err "Division by zero"
+
+                            else
+                                Ok (Float (a / b))
 
                         ( ">+", a, List b ) ->
                             Ok (List (a :: b))
@@ -167,7 +187,72 @@ eval env exp =
                         ( "+<", List a, b ) ->
                             Ok (List (a ++ [ b ]))
 
-                        -- ... (handle other cases)
+                        ( "++", List a, List b ) ->
+                            Ok (List (a ++ b))
+
+                        ( "==", a, b ) ->
+                            Ok (bool (a == b))
+
+                        ( "/=", a, b ) ->
+                            Ok (bool (a /= b))
+
+                        ( "<=", Int a, Int b ) ->
+                            Ok (bool (a <= b))
+
+                        ( ">=", Int a, Int b ) ->
+                            Ok (bool (a >= b))
+
+                        ( "<=", Float a, Float b ) ->
+                            Ok (bool (a <= b))
+
+                        ( ">=", Float a, Float b ) ->
+                            Ok (bool (a >= b))
+
+                        ( "<=", Text a, Text b ) ->
+                            Ok (bool (a <= b))
+
+                        ( ">=", Text a, Text b ) ->
+                            Ok (bool (a >= b))
+
+                        ( "<", Int a, Int b ) ->
+                            Ok (bool (a < b))
+
+                        ( ">", Int a, Int b ) ->
+                            Ok (bool (a > b))
+
+                        ( "<", Float a, Float b ) ->
+                            Ok (bool (a < b))
+
+                        ( ">", Float a, Float b ) ->
+                            Ok (bool (a > b))
+
+                        ( "<", Text a, Text b ) ->
+                            Ok (bool (a < b))
+
+                        ( ">", Text a, Text b ) ->
+                            Ok (bool (a > b))
+
+                        ( "&&", Variant a Hole, Variant b Hole ) ->
+                            Ok (bool (a == "true" && b == "true"))
+
+                        ( "||", Variant a Hole, Variant b Hole ) ->
+                            Ok (bool (a == "true" || b == "true"))
+
+                        ( "|>", a, b ) ->
+                            Ok (Apply b a)
+
+                        ( "<|", a, b ) ->
+                            Ok (Apply a b)
+
+                        ( "^", Int a, Int b ) ->
+                            Ok (Int (a ^ b))
+
+                        ( "^", Float a, Float b ) ->
+                            Ok (Float (a ^ b))
+
+                        ( "%", Int a, Int b ) ->
+                            Ok (Int (modBy b a))
+
                         _ ->
                             Err ("Unsupported operation: " ++ op)
                 )
@@ -335,6 +420,7 @@ scrap =
                             |. P.symbol "~~"
                             |= P.getChompedString (P.chompWhile (\c -> c /= ' ' && c /= '\n'))
                     , \config ->
+                        -- TODO: some
                         succeed Variant
                             |. symbol "#"
                             |. spaces
@@ -445,7 +531,6 @@ scrap =
                 , P.infixLeft 13 minus (Binop "-")
                 , P.infixLeft 11 (P.symbol "<") (Binop "<")
                 , P.infixLeft 11 (P.symbol ">") (Binop ">")
-                , P.infixLeft 7 (P.symbol "#") (Binop "#")
                 , P.infixLeft 5 (P.symbol ":") (Binop ":")
                 , P.infixRight 4 (P.symbol "=") (Binop "=")
                 , P.infixLeft 3 (P.symbol "!") (Binop "!")
