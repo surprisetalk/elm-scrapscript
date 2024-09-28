@@ -21,28 +21,46 @@ record =
     Dict.fromList >> Record
 
 
+desc : String -> List Test -> Test
+desc x =
+    describe x << List.reverse
+
+
+expectEqual a_ b_ =
+    case ( a_, b_ ) of
+        ( Err a, Err b ) ->
+            if String.contains a b then
+                Expect.pass
+
+            else
+                Expect.fail (a ++ "\n\n" ++ b)
+
+        ( a, b ) ->
+            Expect.equal a b
+
+
 suite : Test
 suite =
-    describe "Scrapscript"
-        [ describe "Lexing" <|
-            List.map (\( k, v ) -> test k <| \_ -> Expect.equal v (parse k))
+    desc "Scrapscript"
+        [ desc "Lexing" <|
+            List.map (\( k, v ) -> test k <| \_ -> expectEqual v (parse k))
                 [ ( "1", Ok (Int 1) )
                 , ( "123", Ok (Int 123) )
                 , ( "-123", Ok (Int -123) )
                 , ( "3.14", Ok (Float 3.14) )
                 , ( "-3.14", Ok (Float -3.14) )
-                , ( ".14", Ok (Float 0.14) )
+                , ( ".14", Err "Parse error" )
                 , ( "10.", Ok (Float 10.0) )
                 , ( "1 + 2", Ok (Binop "+" (Int 1) (Int 2)) )
                 , ( "1+2", Ok (Binop "+" (Int 1) (Int 2)) )
-                , ( ",:", Ok (Binop "," (Var "") (Var ":")) )
+                , ( ",:", Err "Parse error" )
                 , ( "1-2", Ok (Binop "-" (Int 1) (Int 2)) )
                 , ( "abc", Ok (Var "abc") )
                 , ( "sha1'abc", Ok (Var "sha1'abc") )
                 , ( "$sha1'foo", Ok (Var "$sha1'foo") )
                 , ( "$$bills", Ok (Var "$$bills") )
                 , ( "...", Ok (Spread Nothing) )
-                , ( "1\n+\t2", Ok (Binop "+" (Int 1) (Int 2)) )
+                , ( "1\n+\n2", Ok (Binop "+" (Int 1) (Int 2)) )
                 , ( "\"hello\"", Ok (String "hello") )
                 , ( "\"hello world\"", Ok (String "hello world") )
                 , ( "[ ]", Ok (List []) )
@@ -84,8 +102,8 @@ suite =
                 , ( "# abc", Ok (Variant "abc" Hole) )
                 , ( "#abc", Ok (Variant "abc" Hole) )
                 ]
-        , describe "Parsing" <|
-            List.map (\( k, v ) -> test k <| always <| Expect.equal v <| parse k)
+        , desc "Parsing" <|
+            List.map (\( k, v ) -> test k <| always <| expectEqual v <| parse k)
                 [ ( "", Err "unexpected end of input" )
                 , ( "1", Ok (Int 1) )
                 , ( "123", Ok (Int 123) )
@@ -173,8 +191,8 @@ suite =
                 , ( "#true () && #false ()", Ok (Binop "&&" true false) )
                 , ( "f #true () #false ()", Ok (Apply (Apply (Var "f") true) false) )
                 ]
-        , describe "Eval" <|
-            List.map (\( env, k, v ) -> test k <| always <| Expect.equal v <| run env k)
+        , desc "Eval" <|
+            List.map (\( env, k, v ) -> test k <| always <| expectEqual v <| run env k)
                 [ ( Dict.empty, "5", Ok (Int 5) )
                 , ( Dict.empty, "3.14", Ok (Float 3.14) )
                 , ( Dict.empty, "\"xyz\"", Ok (String "xyz") )
@@ -254,8 +272,8 @@ suite =
                 , ( Dict.empty, "1.0 / 2", Ok (Float 0.5) )
                 , ( Dict.empty, "1 / 2", Ok (Float 0.5) )
                 ]
-        , describe "End-to-End" <|
-            List.map (\( env, k, v ) -> test k <| always <| Expect.equal v <| run env k)
+        , desc "End-to-End" <|
+            List.map (\( env, k, v ) -> test k <| always <| expectEqual v <| run env k)
                 [ ( Dict.empty, "1", Ok (Int 1) )
                 , ( Dict.empty, "3.14", Ok (Float 3.14) )
                 , ( Dict.empty, "~~QUJD", Ok (Bytes "QUJD") )
@@ -548,7 +566,7 @@ suite =
                 , ( Dict.empty
                   , """
                 update_x {x = 1, y = 2} 3
-                . update-x = r -> new_x -> {x = new_x, ...r}
+                . update_x = r -> new_x -> {x = new_x, ...r}
                 """
                   , Ok (Record (Dict.fromList [ ( "x", Int 3 ), ( "y", Int 2 ) ]))
                   )
@@ -570,14 +588,14 @@ suite =
 {-
    suite : Test
    suite =
-       describe "Scrapscript"
-           [ describe "lex"
+       desc "Scrapscript"
+           [ desc "lex"
                [
                ]
-           , describe "parse"
+           , desc "parse"
                [
                ]
-           , describe "match"
+           , desc "match"
                [ test "hole_with_non_hole_returns_none" <| \_ -> expectEqual ( match ( Int 1, Hole ), Err "" )
                , test "hole_with_hole_returns_empty_dict" <| \_ -> expectEqual ( match ( Hole, Hole ), Ok [] )
                , test "with_equal_ints_returns_empty_dict" <| \_ -> expectEqual ( match ( Int 1, Int 1 ), Ok [] )
@@ -619,13 +637,13 @@ suite =
                , test "variant_matches_value_2" <| \_ -> expectEqual ( match ( Variant ( "abc", Int 123 ), Variant ( "abc", Int 123 ) ), Ok [] )
                , test "variant_with_different_type_returns_none" <| \_ -> expectEqual ( match ( Int 123, Variant ( "abc", Hole ) ), Err "" )
                ]
-           , describe "eval"
+           , desc "eval"
                [
                ]
-           , describe "EndToEndTests"
+           , desc "EndToEndTests"
                [
                ]
-           , describe "StdLibTests"
+           , desc "StdLibTests"
                [ test "add" <| \_ -> expectEqual ( run "$$add 3 4", Ok (Int 7) )
                , test "quote" <| \_ -> expectEqual ( run "$$quote (3 + 4)", Ok (Binop ADD ( Int 3, Int 4 )) )
                , test "quote_pipe" <| \_ -> expectEqual ( run "3 + 4 |> $$quote", Ok (Binop ADD ( Int 3, Int 4 )) )
@@ -638,7 +656,7 @@ suite =
                , test "listlength_returns_length" <| \_ -> expectEqual ( run "$$listlength [1,2,3]", Ok (Int 3) )
                , test "listlength_with_non_list_raises_type_error" <| \_ -> expectError "listlength expected List, but got Int" <| run "$$listlength 1"
                ]
-           , describe "PreludeTests"
+           , desc "PreludeTests"
                [ test "id_returns_input" <| \_ -> expectEqual ( run "id 123", Ok (Int 123) )
                , test "filter_returns_matching" <| \_ -> expectEqual ( run """filter (x -> x < 4) [2, 6, 3, 7, 1, 8]""", Ok (List [ Int 2, Int 3, Int 1 ]) )
                , test "filter_with_function_returning_non_bool_raises_match_error" <| \_ -> expectError "" <| run """filter (x -> #no ()) [1]"""

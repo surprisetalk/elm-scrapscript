@@ -249,6 +249,32 @@ varParser =
         }
 
 
+negate : Parser ()
+negate =
+    backtrackable <|
+        oneOf
+            [ symbol "->" |. P.problem "TODO"
+            , symbol "-" |. P.succeed () |. P.commit ()
+            ]
+
+
+
+--     succeed identity
+--         |. backtrackable (symbol "-")
+--         |= oneOf
+--             [ map (\_ -> True) (backtrackable (P.chompIf ((==) '>')))
+--             , succeed False
+--             ]
+--         |> andThen
+--             (\isBadEnding ->
+--                 if isBadEnding then
+--                     P.problem "expecting the `-` keyword"
+--
+--                 else
+--                     P.commit ()
+--             )
+
+
 oneOfMany : List (P.Config Scrap -> Parser Scrap) -> List (P.Config Scrap -> Parser Scrap)
 oneOfMany parsers =
     let
@@ -368,8 +394,17 @@ scrapParser =
 
                     -- TODO
                     , P.prefix 5 (P.symbol "| ") identity
+                    , P.prefix 20 negate <|
+                        \n_ ->
+                            case n_ of
+                                Int n ->
+                                    Int -n
 
-                    -- , P.prefix 10 (P.symbol "-") (Binop "-" (Int 0))
+                                Float n ->
+                                    Float -n
+
+                                n ->
+                                    Binop "-" (Int 0) n
                     , P.constant (P.keyword "...") (Spread Nothing)
                     , \config ->
                         P.succeed (Spread << Just)
