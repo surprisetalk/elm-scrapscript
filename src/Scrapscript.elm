@@ -26,6 +26,7 @@ type Scrap
     | Hole
     | Variant String Scrap
     | Spread (Maybe Scrap)
+    | Match (List Scrap)
 
 
 true : Scrap
@@ -83,7 +84,10 @@ eval env scrap =
                 |> Result.map Record
 
         Binop "->" arg body ->
-            Ok scrap
+            Ok (Binop "->" arg body)
+
+        Match cases ->
+            Ok (Match cases)
 
         Apply func arg ->
             Result.map2
@@ -249,30 +253,32 @@ varParser =
         }
 
 
-negate : Parser ()
-negate =
+minus : Parser ()
+minus =
     backtrackable <|
         oneOf
-            [ symbol "->" |. P.problem "TODO"
+            [ symbol "->" |. P.problem "TODO: minus"
             , symbol "-" |. P.succeed () |. P.commit ()
             ]
 
 
+bar : Parser ()
+bar =
+    succeed identity
+        |. backtrackable (symbol "|")
+        |= oneOf
+            [ map (\_ -> True) (backtrackable (P.chompIf ((==) '|')))
+            , map (\_ -> True) (backtrackable (P.chompIf ((==) '>')))
+            , succeed False
+            ]
+        |> andThen
+            (\isBadEnding ->
+                if isBadEnding then
+                    P.problem "expecting `|`"
 
---     succeed identity
---         |. backtrackable (symbol "-")
---         |= oneOf
---             [ map (\_ -> True) (backtrackable (P.chompIf ((==) '>')))
---             , succeed False
---             ]
---         |> andThen
---             (\isBadEnding ->
---                 if isBadEnding then
---                     P.problem "expecting the `-` keyword"
---
---                 else
---                     P.commit ()
---             )
+                else
+                    P.commit ()
+            )
 
 
 oneOfMany : List (P.Config Scrap -> Parser Scrap) -> List (P.Config Scrap -> Parser Scrap)
@@ -310,14 +316,17 @@ scrapParser =
             { spaces = P.spaces
             , oneOf =
                 oneOfMany
-                    [ P.constant (P.keyword "()") Hole
-                    , \config ->
+                    [ \config ->
                         P.succeed identity
                             |. P.symbol "("
                             |. spaces
-                            |= P.subExpression 0 config
-                            |. spaces
-                            |. P.symbol ")"
+                            |= oneOf
+                                [ P.succeed Hole
+                                    |. P.symbol ")"
+                                , P.subExpression 0 config
+                                    |. spaces
+                                    |. P.symbol ")"
+                                ]
                     , P.literal <|
                         P.succeed String
                             |. P.symbol "\""
@@ -375,12 +384,12 @@ scrapParser =
                         -- supreme jank
                         P.andThen
                             (\x ->
-                                case ( String.toInt x, String.toFloat x ) of
-                                    ( Just n, _ ) ->
-                                        P.succeed (Int n)
-
-                                    ( _, Just n ) ->
+                                case ( String.contains "." x, String.toInt x, String.toFloat x ) of
+                                    ( True, _, Just n ) ->
                                         P.succeed (Float n)
+
+                                    ( _, Just n, _ ) ->
+                                        P.succeed (Int n)
 
                                     _ ->
                                         P.problem ("bad number: " ++ x)
@@ -391,10 +400,24 @@ scrapParser =
                                 , inner = \c -> Char.isDigit c || c == '.'
                                 , reserved = Set.empty
                                 }
-
-                    -- TODO
-                    , P.prefix 5 (P.symbol "| ") identity
-                    , P.prefix 20 negate <|
+                    , \config ->
+                        P.succeed (\x xs -> Match (x :: xs))
+                            |. P.prefix 4 bar identity config
+                            |. spaces
+                            |= P.subExpression 5 config
+                            |. spaces
+                            |= P.loop []
+                                (\cases ->
+                                    oneOf
+                                        [ succeed (\case_ -> P.Loop (case_ :: cases))
+                                            |. P.prefix 4 bar identity config
+                                            |. spaces
+                                            |= P.subExpression 5 config
+                                            |. spaces
+                                        , succeed (P.Done (List.reverse cases))
+                                        ]
+                                )
+                    , P.prefix 20 minus <|
                         \n_ ->
                             case n_ of
                                 Int n ->
@@ -427,7 +450,7 @@ scrapParser =
                 , P.infixRight 9 (P.symbol "||") (Binop "||")
                 , P.infixRight 8 (P.symbol "|>") (Binop "|>")
                 , P.infixLeft 8 (P.symbol "<|") (Binop "<|")
-                , P.infixLeft 6 (P.symbol "->") (Binop "->")
+                , P.infixRight 6 (P.symbol "->") (Binop "->")
 
                 -- single chars after multichars
                 , P.infixRight 1001 (P.symbol "@") (Binop "@")
@@ -436,11 +459,10 @@ scrapParser =
                 , P.infixRight 14 (P.symbol "/") (Binop "/")
                 , P.infixLeft 14 (P.symbol "%") (Binop "%")
                 , P.infixLeft 13 (P.symbol "+") (Binop "+")
-                , P.infixLeft 13 (P.symbol "-") (Binop "-")
+                , P.infixLeft 13 minus (Binop "-")
                 , P.infixLeft 11 (P.symbol "<") (Binop "<")
                 , P.infixLeft 11 (P.symbol ">") (Binop ">")
                 , P.infixLeft 7 (P.symbol "#") (Binop "#")
-                , P.infixRight 5 (P.symbol "|") (Binop "|")
                 , P.infixLeft 5 (P.symbol ":") (Binop ":")
                 , P.infixRight 4 (P.symbol "=") (Binop "=")
                 , P.infixLeft 3 (P.symbol "!") (Binop "!")
