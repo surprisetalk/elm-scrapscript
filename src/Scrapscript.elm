@@ -16,7 +16,7 @@ type alias Env =
 type Scrap
     = Int Int
     | Float Float
-    | String String
+    | Text String
     | Bytes String
     | Var String
     | List (List Scrap)
@@ -54,7 +54,7 @@ eval env scrap =
         Float _ ->
             Ok scrap
 
-        String _ ->
+        Text _ ->
             Ok scrap
 
         Var name ->
@@ -153,8 +153,8 @@ eval env scrap =
                             else
                                 Ok (Float (toFloat a / toFloat b))
 
-                        ( "++", String a, String b ) ->
-                            Ok (String (a ++ b))
+                        ( "++", Text a, Text b ) ->
+                            Ok (Text (a ++ b))
 
                         ( ">+", a, List b ) ->
                             Ok (List (a :: b))
@@ -328,7 +328,7 @@ scrapParser =
                                     |. P.symbol ")"
                                 ]
                     , P.literal <|
-                        P.succeed String
+                        P.succeed Text
                             |. P.symbol "\""
                             |= P.getChompedString (P.chompWhile (\c -> c /= '"'))
                             |. P.symbol "\""
