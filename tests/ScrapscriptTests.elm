@@ -52,13 +52,13 @@ suite =
                 , ( "3.14", Ok (Float 3.14) )
                 , ( "-3.14", Ok (Float -3.14) )
                 , ( ".14", Err "Parse error" )
-                , ( "10.", Ok (Float 10.0) )
+                , ( "10.", Err "Parse error" )
                 , ( "1 + 2", Ok (Binop "+" (Int 1) (Int 2)) )
                 , ( "1+2", Ok (Binop "+" (Int 1) (Int 2)) )
                 , ( ",:", Err "Parse error" )
                 , ( "1-2", Ok (Binop "-" (Int 1) (Int 2)) )
                 , ( "abc", Ok (Var "abc") )
-                , ( "sha1'abc", Ok (Var "sha1'abc") )
+                , ( "sha1'abc", Err "Parse error" )
                 , ( "$sha1'foo", Ok (Var "$sha1'foo") )
                 , ( "$$bills", Ok (Var "$$bills") )
                 , ( "...", Ok (Spread Nothing) )
@@ -75,11 +75,11 @@ suite =
                 , ( "a : b", Ok (Binop ":" (Var "a") (Var "b")) )
                 , ( "-", Err "Parse error" )
                 , ( "~~", Ok (Bytes "") )
-                , ( "~~QUJD", Ok (Bytes "QUJD") )
-                , ( "~~85'K|(_", Ok (Bytes "85'K|(_") )
-                , ( "~~64'QUJD", Ok (Bytes "64'QUJD") )
-                , ( "~~32'IFBEG===", Ok (Bytes "32'IFBEG===") )
-                , ( "~~16'414243", Ok (Bytes "16'414243") )
+                , ( "~~QUJD", Ok (Bytes "ABC") )
+                , ( "~~85'K|(_", Ok (Bytes "ABC") )
+                , ( "~~64'QUJD", Ok (Bytes "ABC") )
+                , ( "~~32'IFBEG===", Ok (Bytes "ABC") )
+                , ( "~~16'414243", Ok (Bytes "ABC") )
                 , ( "()", Ok Hole )
                 , ( "( )", Ok Hole )
                 , ( "(1+2)", Ok (Binop "+" (Int 1) (Int 2)) )
@@ -120,7 +120,7 @@ suite =
                 , ( "-l r", Ok (Apply (Binop "-" (Int 0) (Var "l")) (Var "r")) )
                 , ( "3.14", Ok (Float 3.14) )
                 , ( "-3.14", Ok (Binop "-" (Int 0) (Float 3.14)) )
-                , ( "abc_123", Ok (Var "abc_123") )
+                , ( "abc-123", Ok (Var "abc-123") )
                 , ( "$sha1'abc", Ok (Var "$sha1'abc") )
                 , ( "$sha1abc", Ok (Var "$sha1abc") )
                 , ( "$", Ok (Var "$") )
@@ -133,7 +133,7 @@ suite =
                 , ( "1 + 2 + 3", Ok (Binop "+" (Binop "+" (Int 1) (Int 2)) (Int 3)) )
                 , ( "1 + 2 * 3", Ok (Binop "+" (Int 1) (Binop "*" (Int 2) (Int 3))) )
                 , ( "1 * 2 + 3", Ok (Binop "+" (Binop "*" (Int 1) (Int 2)) (Int 3)) )
-                , ( "1 / 2 * 3", Ok (Binop "/" (Binop "*" (Int 1) (Int 2)) (Int 3)) )
+                , ( "1 / 2 * 3", Ok (Binop "*" (Binop "/" (Int 1) (Int 2)) (Int 3)) )
                 , ( "5 * 2 ^ 3", Ok (Binop "*" (Int 5) (Binop "^" (Int 2) (Int 3))) )
                 , ( "a +< ls @ 0", Ok (Binop "+<" (Var "a") (Binop "@" (Var "ls") (Int 0))) )
                 , ( "\"abc\" ++ \"def\"", Ok (Binop "++" (Text "abc") (Text "def")) )
@@ -141,9 +141,9 @@ suite =
                 , ( "a +< b", Ok (Binop "+<" (Var "a") (Var "b")) )
                 , ( "[]", Ok (List []) )
                 , ( "[1, 2]", Ok (List [ Int 1, Int 2 ]) )
-                , ( "[,]", Err "" )
-                , ( "[,,]", Err "" )
-                , ( "[1,]", Err "" )
+                , ( "[,]", Err "Parse error" )
+                , ( "[,,]", Err "Parse error" )
+                , ( "[1,]", Err "Parse error" )
                 , ( "a = 1", Ok (Binop "=" (Var "a") (Int 1)) )
                 , ( "a -> a + 1", Ok (Binop "->" (Var "a") (Binop "+" (Var "a") (Int 1))) )
                 , ( "a -> b -> a + b", Ok (Binop "->" (Var "a") (Binop "->" (Var "b") (Binop "+" (Var "a") (Var "b")))) )
@@ -167,11 +167,11 @@ suite =
                 , ( "{a = 4}", Ok (record [ ( "a", Int 4 ) ]) )
                 , ( "{a = 1 + 2}", Ok (record [ ( "a", Binop "+" (Int 1) (Int 2) ) ]) )
                 , ( "{a = 4, b = \"z\"}", Ok (record [ ( "a", Int 4 ), ( "b", Text "z" ) ]) )
-                , ( "3 = 4", Err "" )
-                , ( "{1, 2}", Err "" )
+                , ( "3 = 4", Ok (Binop "=" (Int 3) (Int 4)) )
+                , ( "{1, 2}", Err "Parse error" )
                 , ( "a ! b", Ok (Binop "!" (Var "a") (Var "b")) )
                 , ( "a ! b . c", Ok (Binop "!" (Var "a") (Binop "." (Var "b") (Var "c"))) )
-                , ( "|", Err "" )
+                , ( "|", Err "Parse error" )
                 , ( "| 1 -> 2", Err "TODO" )
                 , ( "| 1 -> 2 | 2 -> 3", Err "TODO" )
                 , ( "f >> g", Ok (Binop "->" (Var "$v0") (Apply (Var "g") (Apply (Var "f") (Var "$v0")))) )
@@ -179,19 +179,20 @@ suite =
                 , ( "f << g << h", Ok (Binop "->" (Var "$v1") (Apply (Var "f") (Apply (Binop "->" (Var "$v0") (Apply (Var "g") (Apply (Var "h") (Var "$v0")))) (Var "$v1")))) )
                 , ( "x || y && z", Ok (Binop "||" (Var "x") (Binop "&&" (Var "y") (Var "z"))) )
                 , ( "[1, ...]", Ok (List [ Int 1, Spread Nothing ]) )
-                , ( "[1, ..., 2]", Err "" )
+                , ( "[1, ..., 2]", Err "TODO" )
                 , ( "[1, ...rest]", Ok (List [ Int 1, Spread (Just (Var "rest")) ]) )
-                , ( "[..., 1]", Err "" )
-                , ( "[...rest, 1]", Err "" )
-                , ( "[1, ..., 1]", Err "" )
-                , ( "[1, ...rest, 1]", Err "" )
+                , ( "[..., 1]", Err "TODO" )
+                , ( "[...rest, 1]", Err "TODO" )
+                , ( "[1, ..., 1]", Err "TODO" )
+                , ( "[1, ...rest, 1]", Err "TODO" )
                 , ( "{x = 1, ...}", Ok (record [ ( "x", Int 1 ), ( "...", Spread Nothing ) ]) )
-                , ( "{..., x = 1}", Err "" )
-                , ( "{x = 1, ..., y = 2}", Err "" )
-                , ( "{,}", Err "" )
-                , ( "{,,}", Err "" )
-                , ( "{x = 1,}", Err "" )
+                , ( "{..., x = 1}", Err "TODO" )
+                , ( "{x = 1, ..., y = 2}", Err "TODO" )
+                , ( "{,}", Err "Parse error" )
+                , ( "{,,}", Err "Parse error" )
+                , ( "{x = 1,}", Err "Parse error" )
                 , ( "#abc 1", Ok (Variant "abc" (Int 1)) )
+                , ( "| #true -> 123", Err "TODO" )
                 , ( "| #true () -> 123", Err "TODO" )
                 , ( "#true () && #false ()", Ok (Binop "&&" true false) )
                 , ( "f #true () #false ()", Ok (Apply (Apply (Var "f") true) false) )
@@ -307,7 +308,7 @@ suite =
                 , ( Dict.empty, "xs@1 . xs = [1, 2, 3]", Ok (Int 2) )
                 , ( Dict.empty, "xs@y . y = 2 . xs = [1, 2, 3]", Ok (Int 3) )
                 , ( Dict.empty, "xs@(1+1) . xs = [1, 2, 3]", Ok (Int 3) )
-                , ( Dict.empty, "list_at 1 [1,2,3] . list_at = idx -> ls -> ls@idx", Ok (Int 2) )
+                , ( Dict.empty, "list-at 1 [1,2,3] . list-at = idx -> ls -> ls@idx", Ok (Int 2) )
                 , ( Dict.empty, "(x -> x) c . c = 1", Ok (Int 1) )
                 , ( Dict.empty, "1 -> a", Err "TODO" )
                 , ( Dict.empty, "((a -> a + 1) >> (b -> b * 2)) 3", Ok (Int 8) )
@@ -364,9 +365,9 @@ suite =
                   )
                 , ( Dict.empty
                   , """
-                    get_x rec
+                    get-x rec
                     . rec = { x = 3 }
-                    . get_x =
+                    . get-x =
                       | { x = x } -> x
                     """
                   , Ok (Int 3)
@@ -401,17 +402,17 @@ suite =
                   )
                 , ( Dict.empty
                   , """
-                    get_x 3
-                    . get_x =
+                    get-x 3
+                    . get-x =
                       | { x = x } -> x
                     """
                   , Err "TODO"
                   )
                 , ( Dict.empty
                   , """
-                    get_x rec
+                    get-x rec
                     . rec = { a = 3, b = 3 }
-                    . get_x =
+                    . get-x =
                       | { a = x, b = x } -> x
                     """
                   , Ok (Int 3)
@@ -449,8 +450,8 @@ suite =
                   )
                 , ( Dict.empty
                   , """
-                    get_x 3
-                    . get_x =
+                    get-x 3
+                    . get-x =
                       | [2, x] -> x
                     """
                   , Err "TODO"
@@ -570,8 +571,8 @@ suite =
                   )
                 , ( Dict.empty
                   , """
-                    update_x {x = 1, y = 2} 3
-                    . update_x = r -> new_x -> {x = new_x, ...r}
+                    update-x {x = 1, y = 2} 3
+                    . update-x = r -> new-x -> {x = new-x, ...r}
                     """
                   , Ok (Record (Dict.fromList [ ( "x", Int 3 ), ( "y", Int 2 ) ]))
                   )
