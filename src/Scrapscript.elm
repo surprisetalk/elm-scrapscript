@@ -3,7 +3,7 @@ module Scrapscript exposing (Scrap(..), parse, run)
 import Char
 import Dict exposing (Dict)
 import Html exposing (b)
-import Parser as P exposing ((|.), (|=), Parser, Problem, andThen, backtrackable, float, int, lazy, map, oneOf, spaces, succeed, symbol)
+import Parser as P exposing ((|.), (|=), Parser, Problem, andThen, backtrackable, float, int, lazy, map, oneOf, succeed, symbol)
 import Pratt as P
 import Set
 
@@ -49,7 +49,7 @@ false =
 
 check : Env -> Scrap -> Result String ( Env, Scrap )
 check env x =
-    -- TODO
+    -- TODO: Implement type-checker.
     Ok ( Dict.empty, x )
 
 
@@ -106,6 +106,7 @@ eval env exp =
         Apply func arg ->
             Result.map2
                 (\evaluatedFunc evaluatedArg ->
+                    -- TODO: Implement Match too.
                     case evaluatedFunc of
                         Binop "->" (Var argName) body ->
                             eval (Dict.insert argName evaluatedArg env) body
@@ -197,6 +198,9 @@ eval env exp =
                         ( "++", List a, List b ) ->
                             Ok (List (a ++ b))
 
+                        ( "++", Text a, Text b ) ->
+                            Err "Text concatenation not allowed. Please use <text/concat a b> or <\"`a``b`\">."
+
                         ( "==", a, b ) ->
                             Ok (bool (a == b))
 
@@ -278,6 +282,7 @@ run env =
 parse : String -> Result String Scrap
 parse input =
     let
+        -- TODO: Implement much nicer errors.
         problemToString : Problem -> String
         problemToString p =
             case p of
@@ -335,16 +340,21 @@ parse input =
 scrap : Parser Scrap
 scrap =
     let
+        spaces : Parser ()
+        spaces =
+            -- TODO: Implement line comments.
+            P.spaces
+
         space : Parser ()
         space =
+            -- TODO: Implement line comments.
             P.chompIf (\c -> c == ' ' || c == '\t' || c == '\n' || c == '\u{000D}')
 
         var : Parser String
         var =
-            -- TODO: Change to kebab case.
             P.variable
                 { start = \c -> Char.isLower c || c == '$'
-                , inner = \c -> Char.isAlphaNum c || c == '$' || c == '_' || c == '\''
+                , inner = \c -> Char.isAlphaNum c || c == '$' || c == '-' || c == '\''
                 , reserved = Set.empty
                 }
 
@@ -414,6 +424,9 @@ scrap =
                                 ]
                     , P.literal <|
                         P.succeed Text
+                            -- TODO: Implement escaping, e.g. "\n".
+                            -- TODO: Implement string interpolation, e.g. "hello `name`".
+                            -- TODO: Strings should be multiline without """.
                             |. P.symbol "\""
                             |= P.getChompedString (P.chompWhile (\c -> c /= '"'))
                             |. P.symbol "\""
@@ -423,11 +436,11 @@ scrap =
                             , P.succeed false |. P.keyword "false"
                             ]
                     , P.literal <|
+                        -- TODO: Implement byte conversion.
                         P.succeed Bytes
                             |. P.symbol "~~"
                             |= P.getChompedString (P.chompWhile (\c -> c /= ' ' && c /= '\n'))
                     , \config ->
-                        -- TODO: some
                         succeed Variant
                             |. symbol "#"
                             |. spaces
@@ -457,6 +470,7 @@ scrap =
                             , end = "}"
                             , spaces = spaces
                             , item =
+                                -- TODO: Implement spread. Consider using empty string as key?
                                 succeed Tuple.pair
                                     |= var
                                     |. spaces
@@ -467,7 +481,7 @@ scrap =
                             }
                             |> P.map (Dict.fromList >> Record)
                     , P.literal <|
-                        -- TODO: redo this supreme jank
+                        -- TODO: Redo this supreme jank.
                         P.andThen
                             (\x ->
                                 case ( String.contains "." x, String.toInt x, String.toFloat x ) of
@@ -487,6 +501,7 @@ scrap =
                                 , reserved = Set.empty
                                 }
                     , \config ->
+                        -- TODO: Something is very broken here.
                         P.succeed (\( x, xs ) -> Match (x :: xs))
                             |= some spaces
                                 (P.succeed identity
@@ -512,6 +527,8 @@ scrap =
                             |= P.prefix 20 (P.symbol "...") identity config
                     ]
             , andThenOneOf =
+                -- TODO: The "@" symbol is too symbolically noisy for record access.
+                -- TODO:   Perhaps we should use `.` instead and let variables have their own little sub-language?
                 [ P.infixRight 2000 (P.symbol "::") (Binop "::")
                 , P.infixLeft 16 (P.symbol ">>") (Binop ">>")
                 , P.infixLeft 16 (P.symbol "<<") (Binop "<<")

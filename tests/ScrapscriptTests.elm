@@ -43,6 +43,7 @@ expectEqual a_ b_ =
 suite : Test
 suite =
     -- TODO: Fill in all the `Err ""` results to avoid false negatives.
+    -- Tests initially cribbed from https://github.com/tekknolagi/scrapscript
     desc "Scrapscript"
         [ desc "Lexing" <|
             List.map (\( k, v ) -> test k <| \_ -> expectEqual v (parse k))
@@ -136,7 +137,7 @@ suite =
                 , ( "1 / 2 * 3", Ok (Binop "*" (Binop "/" (Int 1) (Int 2)) (Int 3)) )
                 , ( "5 * 2 ^ 3", Ok (Binop "*" (Int 5) (Binop "^" (Int 2) (Int 3))) )
                 , ( "a +< ls @ 0", Ok (Binop "+<" (Var "a") (Binop "@" (Var "ls") (Int 0))) )
-                , ( "\"abc\" ++ \"def\"", Ok (Binop "++" (Text "abc") (Text "def")) )
+                , ( "\"abc\" ++ \"def\"", Err "not allowed" )
                 , ( "a >+ b", Ok (Binop ">+" (Var "a") (Var "b")) )
                 , ( "a +< b", Ok (Binop "+<" (Var "a") (Var "b")) )
                 , ( "[]", Ok (List []) )
