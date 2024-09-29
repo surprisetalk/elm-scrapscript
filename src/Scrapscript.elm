@@ -1,4 +1,4 @@
-module Scrapscript exposing (Scrap(..), parse, run)
+module Scrapscript exposing (Scrap(..), parse, run, toString)
 
 import Char
 import Dict exposing (Dict)
@@ -26,6 +26,55 @@ type Scrap
     | Variant String Scrap
     | Spread (Maybe Scrap)
     | Match (List Scrap)
+
+
+toString : Scrap -> String
+toString exp =
+    case exp of
+        Hole ->
+            "()"
+
+        Int x ->
+            String.fromInt x
+
+        Float x ->
+            String.fromFloat x
+
+        Text x ->
+            x
+
+        Bytes _ ->
+            "TODO"
+
+        Var x ->
+            x
+
+        List x ->
+            "[" ++ String.join ", " (List.map toString x) ++ "]"
+
+        Record x ->
+            "{" ++ String.join ", " (Dict.foldl (\k v s -> (k ++ " = " ++ toString v) :: s) [] x) ++ "}"
+
+        Apply f x ->
+            toString f ++ " " ++ toString x
+
+        Binop op a b ->
+            toString a ++ " " ++ op ++ " " ++ toString b
+
+        Variant k Hole ->
+            "#" ++ k
+
+        Variant k v ->
+            "#" ++ k ++ " " ++ toString v
+
+        Spread Nothing ->
+            "..."
+
+        Spread (Just x) ->
+            "..." ++ toString x
+
+        Match xs ->
+            xs |> List.map (\x -> "| " ++ toString x) |> String.join " "
 
 
 bool : Bool -> Scrap
