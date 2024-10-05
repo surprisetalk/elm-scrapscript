@@ -1,5 +1,6 @@
 module Scrapscript exposing (Scrap(..), parse, run, toString)
 
+import Array
 import Char
 import Dict exposing (Dict)
 import Html exposing (b)
@@ -160,8 +161,8 @@ eval env exp =
                         Binop "->" (Var argName) body ->
                             eval (Dict.insert argName evaluatedArg env) body
 
-                        _ ->
-                            Err "Cannot apply non-function"
+                        f ->
+                            Err ("Cannot apply non-function: " ++ toString (Apply f evaluatedArg))
                 )
                 (eval env func)
                 (eval env arg)
@@ -379,8 +380,18 @@ parse input =
 
         deadEndsToString : List P.DeadEnd -> String
         deadEndsToString =
-            List.map (\deadend -> problemToString deadend.problem ++ " at row " ++ String.fromInt deadend.row ++ ", col " ++ String.fromInt deadend.col)
-                >> String.join "; "
+            -- List.map (\deadend -> problemToString deadend.problem ++ " at row " ++ String.fromInt deadend.row ++ ", col " ++ String.fromInt deadend.col) >> String.join "; "
+            List.head
+                >> Maybe.map
+                    (\deadend ->
+                        input
+                            |> String.split "\n"
+                            |> Array.fromList
+                            |> Array.get (deadend.row - 1)
+                            |> Maybe.map (String.dropLeft (deadend.col - 1))
+                            |> Maybe.withDefault (problemToString deadend.problem)
+                    )
+                >> Maybe.withDefault "TODO: something went wrong"
     in
     P.run scrap input
         |> Result.mapError (\errors -> "Parse error: " ++ deadEndsToString errors)
@@ -403,7 +414,7 @@ scrap =
         var =
             P.variable
                 { start = \c -> Char.isLower c || c == '$'
-                , inner = \c -> Char.isAlphaNum c || c == '$' || c == '-' || c == '\''
+                , inner = \c -> Char.isAlphaNum c || c == '$' || c == '-' || c == '\'' || c == '/'
                 , reserved = Set.empty
                 }
 
@@ -411,7 +422,7 @@ scrap =
         symbolUnless yes nos =
             succeed identity
                 |. backtrackable (symbol yes)
-                |= oneOf (succeed False :: List.map (symbol >> backtrackable >> P.map (always True)) nos)
+                |= oneOf (List.map (symbol >> backtrackable >> P.map (always True)) nos ++ [ succeed False ])
                 |> andThen
                     (\isBadEnding ->
                         if isBadEnding then
@@ -423,11 +434,15 @@ scrap =
 
         minus : Parser ()
         minus =
-            symbolUnless "-" [ ">" ]
+            symbolUnless "-" [ ">", "-" ]
 
         bar : Parser ()
         bar =
             symbolUnless "|" [ "|", ">" ]
+
+        flip : (a -> b -> c) -> (b -> a -> c)
+        flip f a b =
+            f b a
 
         some : Parser () -> Parser a -> Parser ( a, List a )
         some s p =
@@ -450,7 +465,7 @@ scrap =
         oneOfMany : List (P.Config Scrap -> Parser Scrap) -> List (P.Config Scrap -> Parser Scrap)
         oneOfMany parsers =
             [ \config ->
-                P.succeed (\( x, xs ) -> List.foldr Apply x xs)
+                P.succeed (\( x, xs ) -> List.foldl (flip Apply) x xs)
                     |= some (space |. spaces) (oneOf <| List.map (\f -> f config) parsers)
             ]
     in
@@ -519,13 +534,24 @@ scrap =
                             , end = "}"
                             , spaces = spaces
                             , item =
-                                -- TODO: Implement spread. Consider using empty string as key?
-                                succeed Tuple.pair
-                                    |= var
-                                    |. spaces
-                                    |. symbol "="
-                                    |. spaces
-                                    |= P.subExpression 0 config
+                                oneOf
+                                    [ succeed (\k -> ( "..." ++ Maybe.withDefault "" k, Spread (Maybe.map Var k) ))
+                                        |. P.symbol "..."
+                                        |= oneOf
+                                            [ succeed Just |= var
+                                            , succeed Nothing
+                                            ]
+                                    , succeed (\k v -> ( k, Maybe.withDefault (Var k) v ))
+                                        |= var
+                                        |. spaces
+                                        |= oneOf
+                                            [ succeed Just
+                                                |. symbol "="
+                                                |. spaces
+                                                |= P.subExpression 0 config
+                                            , P.succeed Nothing
+                                            ]
+                                    ]
                             , trailing = P.Forbidden
                             }
                             |> P.map (Dict.fromList >> Record)
