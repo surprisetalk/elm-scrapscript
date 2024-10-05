@@ -27,6 +27,8 @@ type Scrap
     | Variant String Scrap
     | Spread (Maybe Scrap)
     | Match (List Scrap)
+    | Native (Scrap -> Result String Scrap)
+    | Closure Env Scrap Scrap
 
 
 toString : Scrap -> String
@@ -45,7 +47,7 @@ toString exp =
             x
 
         Bytes _ ->
-            "TODO"
+            "TODO: bytes"
 
         Var x ->
             x
@@ -76,6 +78,12 @@ toString exp =
 
         Match xs ->
             xs |> List.map (\x -> "| " ++ toString x) |> String.join " "
+
+        Native _ ->
+            "TODO: native"
+
+        Closure _ a b ->
+            "(" ++ toString a ++ " -> " ++ toString b ++ ")"
 
 
 bool : Bool -> Scrap
@@ -148,10 +156,16 @@ eval env exp =
                 |> Result.map Record
 
         Binop "->" arg body ->
-            Ok (Binop "->" arg body)
+            Ok (Closure env arg body)
+
+        Closure env_ arg body ->
+            Ok (Closure env_ arg body)
 
         Match cases ->
             Ok (Match cases)
+
+        Apply (Native f) arg ->
+            eval env arg |> Result.andThen f
 
         Apply func arg ->
             Result.map2
@@ -160,6 +174,9 @@ eval env exp =
                     case evaluatedFunc of
                         Binop "->" (Var argName) body ->
                             eval (Dict.insert argName evaluatedArg env) body
+
+                        Closure env_ (Var argName) body ->
+                            eval (Dict.insert argName evaluatedArg env_) body
 
                         f ->
                             Err ("Cannot apply non-function: " ++ toString (Apply f evaluatedArg))
@@ -195,6 +212,9 @@ eval env exp =
 
         Spread _ ->
             Err "Cannot evaluate a spread directly"
+
+        Native _ ->
+            Err "Cannot evaluate a native function directly"
 
         Binop op left right ->
             Result.map2
@@ -300,10 +320,10 @@ eval env exp =
                             Ok (bool (a == "true" || b == "true"))
 
                         ( "|>", a, b ) ->
-                            Ok (Apply b a)
+                            eval env (Apply b a)
 
                         ( "<|", a, b ) ->
-                            Ok (Apply a b)
+                            eval env (Apply a b)
 
                         ( "^", Int a, Int b ) ->
                             Ok (Int (a ^ b))
@@ -618,7 +638,7 @@ scrap =
                 , P.infixLeft 11 (P.symbol ">=") (Binop ">=")
                 , P.infixRight 10 (P.symbol "&&") (Binop "&&")
                 , P.infixRight 9 (P.symbol "||") (Binop "||")
-                , P.infixRight 8 (P.symbol "|>") (Binop "|>")
+                , P.infixLeft 8 (P.symbol "|>") (Binop "|>")
                 , P.infixLeft 8 (P.symbol "<|") (Binop "<|")
                 , P.infixRight 6 (P.symbol "->") (Binop "->")
                 , P.infixRight 1001 (P.symbol "@") (Binop "@")
