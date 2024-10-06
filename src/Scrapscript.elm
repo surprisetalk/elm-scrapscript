@@ -21,7 +21,7 @@ type Scrap
     | Bytes String
     | Var String
     | List (List Scrap)
-    | Record (Dict String Scrap)
+    | Record (List ( String, Scrap ))
     | Apply Scrap Scrap
     | Binop String Scrap Scrap
     | Variant String Scrap
@@ -56,7 +56,7 @@ toString exp =
             "[" ++ String.join ", " (List.map toString x) ++ "]"
 
         Record x ->
-            "{" ++ String.join ", " (Dict.foldl (\k v s -> (k ++ " = " ++ toString v) :: s) [] x) ++ "}"
+            "{" ++ String.join ", " (Dict.foldl (\k v s -> (k ++ " = " ++ toString v) :: s) [] (Dict.fromList x)) ++ "}"
 
         Apply f x ->
             toString f ++ " " ++ toString x
@@ -134,25 +134,15 @@ eval env exp =
                 |> Result.fromMaybe ("Variable not found: " ++ name)
 
         List items ->
-            List.foldr
-                (\item accResult ->
-                    Result.map2 (\acc evaluatedItem -> evaluatedItem :: acc)
-                        accResult
-                        (eval env item)
-                )
-                (Ok [])
-                items
+            items
+                |> List.map (eval env)
+                |> List.foldr (Result.map2 (::)) (Ok [])
                 |> Result.map List
 
         Record fields ->
-            Dict.foldr
-                (\key value accResult ->
-                    Result.map2 (\acc evaluatedValue -> Dict.insert key evaluatedValue acc)
-                        accResult
-                        (eval env value)
-                )
-                (Ok Dict.empty)
-                fields
+            fields
+                |> List.map (\( k, v ) -> eval env v |> Result.map (Tuple.pair k))
+                |> List.foldr (Result.map2 (::)) (Ok [])
                 |> Result.map Record
 
         Binop "->" arg body ->
@@ -574,7 +564,7 @@ scrap =
                                     ]
                             , trailing = P.Forbidden
                             }
-                            |> P.map (Dict.fromList >> Record)
+                            |> P.map Record
                     , P.literal <|
                         -- TODO: Redo this supreme jank.
                         P.andThen
